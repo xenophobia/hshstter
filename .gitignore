@@ -1,0 +1,6 @@
+*.hi
+*.o
+*.ini
+OAuth_TEST*
+OAuth
+getTweet
