@@ -19,20 +19,6 @@ import Data.Char
 import qualified Codec.Binary.Base64 as B64
 import qualified Data.ByteString.Lazy as L
 
-{-
--- タイムライン表示
-getTimeline :: IO ()
-getTimeline = 
--}
-
--- ツイートする(Ctrl+Cで抜ける)
-main_loop :: OAuth -> IO ()
-main_loop oauth = do
-  content <- getLine
-  tweet <- apiRequest oauth "update" POST [("status", encodeString content)]
-  res <- simpleHTTPIO tweet
-  main_loop oauth
-
 -- アクセストークンを新規に取得
 getAccessToken :: String -> String -> IO (Parameter, Parameter)
 getAccessToken consumerKey consumerSecret = do
