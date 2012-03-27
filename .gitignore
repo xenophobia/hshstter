@@ -1,9 +1,7 @@
 *.hi
 *.o
 *.ini
-OAuth_TEST*
 OAuth
-getTweet
 HshstterLocalMain
 hshstterGUI_.glade
 *~

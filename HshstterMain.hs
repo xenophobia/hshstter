@@ -37,10 +37,10 @@ data GUI = GUI {
     }
 
 -- アクセストークンを新規に取得
-getAccessToken :: GUI -> String -> String -> IO (Parameter, Parameter)
-getAccessToken gui consumerKey consumerSecret = do
+getNewAccessToken :: GUI -> String -> String -> IO (Parameter, Parameter)
+getNewAccessToken gui consumerKey consumerSecret = do
   putStrLn "Access Token is not found."
-  let oauth_ = OAuth consumerKey consumerSecret "" ""
+  oauth_ <- newOAuth consumerKey consumerSecret "" ""
   -- リクエストトークン発行要求リクエスト生成
   requestForGetRequestToken <- oauthRequest oauth_ requestTokenURL "" []
   -- リクエストトークン取得
@@ -158,8 +158,8 @@ main gladePath = do
   consumerSecret <- hGetLine fin
   hClose fin
   -- アクセストークン取得
-  (accessToken, accessTokenSecret) <- restoreAccessToken `catch` \_ -> getAccessToken gui consumerKey consumerSecret
-  let oauth = OAuth consumerKey consumerSecret (snd accessToken) (snd accessTokenSecret)
+  (accessToken, accessTokenSecret) <- restoreAccessToken `catch` \_ -> getNewAccessToken gui consumerKey consumerSecret
+  oauth <- newOAuth consumerKey consumerSecret (snd accessToken) (snd accessTokenSecret)
 
   -- タイムライン表示
   showTimeline gui oauth

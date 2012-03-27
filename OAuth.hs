@@ -9,6 +9,7 @@ import System.Random
 import System.Time
 import Control.Arrow
 import Control.Applicative
+import Data.IORef
 import Data.Digest.Pure.SHA
 import Codec.Binary.UTF8.String (encodeString)
 import Data.Char
@@ -17,11 +18,41 @@ import qualified Data.ByteString.Lazy as L
 
 -- OAuth型
 data OAuth = OAuth {
-      consumerKey :: !String,
-      consumerSecret :: !String,
-      accessToken :: !String,
-      accessTokenSecret :: !String
+      consumerKey :: !(IORef String),
+      consumerSecret :: !(IORef String),
+      accessToken :: !(IORef String),
+      accessTokenSecret :: !(IORef String)
     }
+
+-- Oauth型を生成
+newOAuth :: String -> String -> String -> String -> IO OAuth
+newOAuth oauthConsumerKey_ oauthConsumerSecret_ oauthAccessToken_ oauthAccessTokenSecret_ = do
+  oauthConsumerKey <- newIORef oauthConsumerKey_
+  oauthConsumerSecret <- newIORef oauthConsumerSecret_
+  oauthAccessToken <- newIORef oauthAccessToken_
+  oauthAccessTokenSecret <- newIORef oauthAccessTokenSecret_
+  return $ OAuth oauthConsumerKey oauthConsumerSecret oauthAccessToken oauthAccessTokenSecret
+
+-- 各フィールドに書き込み
+setConsumerKey :: OAuth -> String -> IO ()
+setConsumerKey oauth set = writeIORef (consumerKey oauth) set
+setConsumerSecret :: OAuth -> String -> IO ()
+setConsumerSecret oauth set = writeIORef (consumerSecret oauth) set
+setAccessToken :: OAuth -> String -> IO ()
+setAccessToken oauth set = writeIORef (accessToken oauth) set
+setAccessTokenSecret :: OAuth -> String -> IO ()
+setAccessTokenSecret oauth set = writeIORef (accessTokenSecret oauth) set
+
+-- 各フィールドの読み込み
+getConsumerKey :: OAuth -> IO String
+getConsumerKey oauth = readIORef (consumerKey oauth)
+getConsumerSecret :: OAuth -> IO String
+getConsumerSecret oauth = readIORef (consumerSecret oauth)
+getAccessToken :: OAuth -> IO String
+getAccessToken oauth = readIORef (accessToken oauth)
+getAccessTokenSecret :: OAuth -> IO String
+getAccessTokenSecret oauth = readIORef (accessTokenSecret oauth)
+
 -- パラメータ型
 type Parameter = (String, String)
 
@@ -69,59 +100,58 @@ apiRequestURL api = "http://api.twitter.com/1/statuses/" ++ api ++ ".json"
 -- OAuth Request 生成
 oauthRequest :: OAuth -> String -> String -> [Parameter] -> IO Request_String
 oauthRequest oauth url token parameter = do
-    let key = consumerKey oauth -- Consumer key
-        secret = consumerSecret oauth -- Consumer Secret
-        uri = fromJust . parseURI $ url -- URI
-    timestamp <- show . (\(TOD i _) -> i) <$> getClockTime -- タイムスタンプ取得
-    nonce <- show <$> randomRIO (0, maxBound::Int) -- 乱数取得
-    let authorizationParameters_ = parameter ++ [
-                                ("oauth_consumer_key", key),
-                                ("oauth_nonce", nonce),
-                                ("oauth_timestamp", timestamp),
-                                ("oauth_signature_method", "HMAC-SHA1"),
-                                ("oauth_version", "1.0")
-                               ] -- 各種基本パラメータをセット
-        signature = genSignature secret token POST url authorizationParameters_ -- 署名生成
-        authorizationParameters = authorizationParameters_++[("oauth_signature", signature)] -- 署名をパラメータに加える
-        authorizationHeader = mkHeader HdrAuthorization . ("OAuth "++) . urlEncodeParams $ authorizationParameters -- Authorizationヘッダ生成
-    -- Request を構成
-    return $ Request {
-                 rqURI = uri,
-                 rqMethod = POST,
-                 rqHeaders = [authorizationHeader],
-                 rqBody = ""
-               }
+  key <- getConsumerKey oauth -- Consumer key
+  secret <- getConsumerSecret oauth -- Consumer Secret
+  let uri = fromJust . parseURI $ url -- URI
+  timestamp <- show . (\(TOD i _) -> i) <$> getClockTime -- タイムスタンプ取得
+  nonce <- show <$> randomRIO (0, maxBound::Int) -- 乱数取得
+  let authorizationParameters_ = parameter ++ [
+                                          ("oauth_consumer_key", key),
+                                          ("oauth_nonce", nonce),
+                                          ("oauth_timestamp", timestamp),
+                                          ("oauth_signature_method", "HMAC-SHA1"),
+                                          ("oauth_version", "1.0")
+                                         ] -- 各種基本パラメータをセット
+      signature = genSignature secret token POST url authorizationParameters_ -- 署名生成
+      authorizationParameters = authorizationParameters_++[("oauth_signature", signature)] -- 署名をパラメータに加える
+      authorizationHeader = mkHeader HdrAuthorization . ("OAuth "++) . urlEncodeParams $ authorizationParameters -- Authorizationヘッダ生成
+  -- Request を構成
+  return $ Request {
+               rqURI = uri,
+               rqMethod = POST,
+               rqHeaders = [authorizationHeader],
+               rqBody = ""
+             }
 
 -- APIリクエスト
 apiRequest :: OAuth -> String -> RequestMethod -> [Parameter] -> IO Request_String
 apiRequest oauth api method args = do
-    let key = consumerKey oauth -- Consumer key
-        token = accessToken oauth -- AccessToken
-        secret_Consumer = consumerSecret oauth -- Consumer Secret
-        secret_AccessToken = accessTokenSecret oauth -- AccessToken Secret
-        url = apiRequestURL api
-        uri = fromJust . parseURI $ if method == POST then url else url ++ "?" ++ urlEncodeVars args  -- URI
-    timestamp <- show . (\(TOD i _) -> i) <$> getClockTime -- タイムスタンプ取得
-    nonce <- show <$> randomRIO (0, maxBound::Int) -- 乱数取得
-    let authorizationParameters_ = [
-                                    ("oauth_token", token),
-                                    ("oauth_consumer_key", key),
-                                    ("oauth_nonce", nonce),
-                                    ("oauth_timestamp", timestamp),
-                                    ("oauth_signature_method", "HMAC-SHA1"),
-                                    ("oauth_version", "1.0")
-                                   ] -- 各種基本パラメータをセット
-        signature = genSignature secret_Consumer secret_AccessToken method url (args ++ authorizationParameters_) -- 署名生成
-        authorizationParameters = authorizationParameters_++[("oauth_signature", signature)] -- 署名をパラメータに加える
-        authorizationHeader = mkHeader HdrAuthorization . ("OAuth "++) . urlEncodeParams $ authorizationParameters -- Authorizationヘッダ生成
-        contentLengthHeader = mkHeader HdrContentLength (show . length . urlEncodeVars $ args)
-    -- Request を構成
-    return $ Request {
-                 rqURI = uri,
-                 rqMethod = method,
-                 rqHeaders = if method == POST then [authorizationHeader, contentLengthHeader] else [authorizationHeader] ,
-                 rqBody = if method == POST then urlEncodeVars args else ""
-               }
+  key <- getConsumerKey oauth -- Consumer key
+  token <- getAccessToken oauth -- AccessToken
+  secret_Consumer <- getConsumerSecret oauth -- Consumer Secret
+  secret_AccessToken <- getAccessTokenSecret oauth -- AccessToken Secret
+  let url = apiRequestURL api
+      uri = fromJust . parseURI $ if method == POST then url else url ++ "?" ++ urlEncodeVars args  -- URI
+  timestamp <- show . (\(TOD i _) -> i) <$> getClockTime -- タイムスタンプ取得
+  nonce <- show <$> randomRIO (0, maxBound::Int) -- 乱数取得
+  let authorizationParameters_ = [
+       ("oauth_token", token),
+       ("oauth_consumer_key", key),
+       ("oauth_nonce", nonce),
+       ("oauth_timestamp", timestamp),
+       ("oauth_signature_method", "HMAC-SHA1"),
+       ("oauth_version", "1.0")] -- 各種基本パラメータをセット
+      signature = genSignature secret_Consumer secret_AccessToken method url (args ++ authorizationParameters_) -- 署名生成
+      authorizationParameters = authorizationParameters_++[("oauth_signature", signature)] -- 署名をパラメータに加える
+      authorizationHeader = mkHeader HdrAuthorization . ("OAuth "++) . urlEncodeParams $ authorizationParameters -- Authorizationヘッダ生成
+      contentLengthHeader = mkHeader HdrContentLength (show . length . urlEncodeVars $ args)
+  -- Request を構成
+  return $ Request {
+               rqURI = uri,
+               rqMethod = method,
+               rqHeaders = if method == POST then [authorizationHeader, contentLengthHeader] else [authorizationHeader] ,
+               rqBody = if method == POST then urlEncodeVars args else ""
+             }
 
 -- simpleHTTP のIO版
 simpleHTTPIO :: HStream a => Request a -> IO (Response a)

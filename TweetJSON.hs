@@ -5,12 +5,12 @@ import Text.JSON
 
 -- ツイート
 data Tweet = Tweet {
-      name :: String, -- ユーザ名
-      screen_name :: String, -- ユーザID
-      retweeted :: Bool, -- リツイートされたか
-      created_at :: String, -- ツイートされた時刻
-      profile_image_url :: String, -- プロフィール画像
-      text :: String -- ツイート内容
+      name :: !String, -- ユーザ名
+      screen_name :: !String, -- ユーザID
+      retweeted :: !Bool, -- リツイートされたか
+      created_at :: !String, -- ツイートされた時刻
+      profile_image_url :: !String, -- プロフィール画像
+      text :: !String -- ツイート内容
 }
 
 instance Show Tweet where
