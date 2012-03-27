@@ -66,8 +66,8 @@
     </child>
   </widget>
   <widget class="GtkWindow" id="accessTokenGetWin">
-    <property name="width_request">300</property>
-    <property name="height_request">200</property>
+    <property name="width_request">440</property>
+    <property name="height_request">250</property>
     <property name="resizable">False</property>
     <child>
       <widget class="GtkFixed" id="fixed1">
@@ -86,21 +86,21 @@ and input PIN code.</property>
           </packing>
         </child>
         <child>
-          <widget class="GtkEntry" id="entry1">
-            <property name="width_request">394</property>
-            <property name="height_request">29</property>
+          <widget class="GtkEntry" id="pinEntry">
+            <property name="width_request">400</property>
+            <property name="height_request">30</property>
             <property name="visible">True</property>
             <property name="can_focus">True</property>
             <property name="invisible_char">&#x25CF;</property>
           </widget>
           <packing>
-            <property name="x">24</property>
-            <property name="y">120</property>
+            <property name="x">26</property>
+            <property name="y">153</property>
           </packing>
         </child>
         <child>
-          <widget class="GtkButton" id="button1">
-            <property name="label" translatable="yes">button</property>
+          <widget class="GtkButton" id="authorizationButton">
+            <property name="label" translatable="yes">Authorization</property>
             <property name="width_request">100</property>
             <property name="height_request">40</property>
             <property name="visible">True</property>
@@ -113,8 +113,8 @@ and input PIN code.</property>
           </packing>
         </child>
         <child>
-          <widget class="GtkButton" id="button2">
-            <property name="label" translatable="yes">button</property>
+          <widget class="GtkButton" id="cancelButton">
+            <property name="label" translatable="yes">Cancel</property>
             <property name="width_request">100</property>
             <property name="height_request">40</property>
             <property name="visible">True</property>
@@ -127,15 +127,45 @@ and input PIN code.</property>
           </packing>
         </child>
         <child>
-          <widget class="GtkLabel" id="authorizationURL">
-            <property name="width_request">288</property>
-            <property name="height_request">38</property>
+          <widget class="GtkEntry" id="authorizationURL">
+            <property name="width_request">400</property>
+            <property name="height_request">30</property>
             <property name="visible">True</property>
-            <property name="label" translatable="yes">label</property>
+            <property name="can_focus">True</property>
+            <property name="editable">False</property>
+            <property name="invisible_char">&#x25CF;</property>
           </widget>
           <packing>
-            <property name="x">73</property>
-            <property name="y">69</property>
+            <property name="x">25</property>
+            <property name="y">89</property>
+          </packing>
+        </child>
+        <child>
+          <widget class="GtkLabel" id="label1">
+            <property name="width_request">279</property>
+            <property name="height_request">20</property>
+            <property name="visible">True</property>
+            <property name="xalign">0</property>
+            <property name="yalign">1</property>
+            <property name="label" translatable="yes">Authorization URL</property>
+          </widget>
+          <packing>
+            <property name="x">27</property>
+            <property name="y">66</property>
+          </packing>
+        </child>
+        <child>
+          <widget class="GtkLabel" id="label2">
+            <property name="width_request">314</property>
+            <property name="height_request">20</property>
+            <property name="visible">True</property>
+            <property name="xalign">0</property>
+            <property name="yalign">1</property>
+            <property name="label" translatable="yes">PIN</property>
+          </widget>
+          <packing>
+            <property name="x">28</property>
+            <property name="y">134</property>
           </packing>
         </child>
       </widget>

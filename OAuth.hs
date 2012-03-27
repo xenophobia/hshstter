@@ -161,5 +161,5 @@ simpleHTTPIO req = do
     Right res' -> if rspCode res' == (2, 0, 0) then return res' else fail.show $ res'
     Left err -> fail.show $ err
 
-
-  
+simpleHTTPIO_ :: HStream a => Request a -> IO ()
+simpleHTTPIO_ req = simpleHTTP req >> return ()
