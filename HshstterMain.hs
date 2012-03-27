@@ -145,7 +145,7 @@ showTimeline gui oauth = do
                   Error _ -> JSNull
   tweets <- getTimeline tryJSON `catch` \_ -> return []
   if null tweets then
-      return False
+      return True
   else
       do
         -- text buffer¿∏¿Æ
