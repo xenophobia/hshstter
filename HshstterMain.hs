@@ -28,15 +28,17 @@ import Control.Concurrent
 
 -- GUIデータ型
 data GUI = GUI {
-      mainWin :: Window,
-      tweetEntry :: Entry,
-      tweetButton :: Button,
-      timeline :: TextView
+      mainWin :: !Window,
+      tweetEntry :: !Entry,
+      tweetButton :: !Button,
+      timeline :: !TextView,
+      timelineWindow :: !ScrolledWindow,
+      accessTokenGetWin :: !Window
     }
 
 -- アクセストークンを新規に取得
-getAccessToken :: String -> String -> IO (Parameter, Parameter)
-getAccessToken consumerKey consumerSecret = do
+getAccessToken :: GUI -> String -> String -> IO (Parameter, Parameter)
+getAccessToken gui consumerKey consumerSecret = do
   putStrLn "Access Token is not found."
   let oauth_ = OAuth consumerKey consumerSecret "" ""
   -- リクエストトークン発行要求リクエスト生成
@@ -45,8 +47,10 @@ getAccessToken consumerKey consumerSecret = do
   requestTokenParameters <- (fmap $ parseParameter . rspBody) . simpleHTTPIO $ requestForGetRequestToken
   requestToken <- getParameter requestTokenParameters "oauth_token"
   requestTokenSecret <- getParameter requestTokenParameters "oauth_token_secret"
+
   -- 認証ページのアドレス表示
   putStrLn $ authorizeURL ++ "?" ++ urlEncodeVars [requestToken]
+
   -- PIN入力 -> oauth_verifierパラメータとして束縛
   verifier <- ("oauth_varifier",) <$> getLine
   -- アクセストークン発行要求リクエスト生成
@@ -88,14 +92,18 @@ loadGlade gladePath = do
 
   -- メインウインドウをロード
   guiMainWin <- xmlGetWidget xml castToWindow "mainWin"
+  -- アクセストークン取得ウインドウをロード
+  guiAccessTokenWin <- xmlGetWidget xml castToWindow "accessTokenGetWin"
   -- ツイート入力部をロード
   guiTweetEntry <- xmlGetWidget xml castToEntry "tweetEntry"
   -- ツイートボタンをロード
   guiTweetButton <- xmlGetWidget xml castToButton "tweetButton"
   -- タイムライン表示部をロード
   guiTimeline <- xmlGetWidget xml castToTextView "timeline"
+  -- スクロールバーをロード
+  guiTimelineWindow <- xmlGetWidget xml castToScrolledWindow "timelineWindow"
   
-  return $ GUI guiMainWin guiTweetEntry guiTweetButton guiTimeline
+  return $ GUI guiMainWin guiTweetEntry guiTweetButton guiTimeline guiTimelineWindow guiAccessTokenWin
 
 -- タイムラインを表示
 showTimeline :: GUI -> OAuth -> IO Bool
@@ -127,21 +135,11 @@ tweet gui oauth = do
 
 main :: FilePath -> IO ()
 main gladePath = do
-  -- OAuth関連
-  -- Consumer Key / Consumer Secret読み込み
-  fin <- openFile "./config.ini" ReadMode
-  consumerKey <- hGetLine fin
-  consumerSecret <- hGetLine fin
-  hClose fin
-  -- アクセストークン取得
-  (accessToken, accessTokenSecret) <- restoreAccessToken `catch` \_ -> getAccessToken consumerKey consumerSecret
-  let oauth = OAuth consumerKey consumerSecret (snd accessToken) (snd accessTokenSecret)
 
-  -- GUI関連
   -- GTK+システム初期化
   initGUI
 
-  -- 
+  -- 他のスレッドが頻繁に走れるようにする
   timeoutAddFull (yield >> return True)
                  priorityDefaultIdle 100
 
@@ -153,6 +151,16 @@ main gladePath = do
   -- xボタンでウインドウを消去
   onDestroy (mainWin gui) mainQuit
   
+  -- OAuth関連
+  -- Consumer Key / Consumer Secret読み込み
+  fin <- openFile "./config.ini" ReadMode
+  consumerKey <- hGetLine fin
+  consumerSecret <- hGetLine fin
+  hClose fin
+  -- アクセストークン取得
+  (accessToken, accessTokenSecret) <- restoreAccessToken `catch` \_ -> getAccessToken gui consumerKey consumerSecret
+  let oauth = OAuth consumerKey consumerSecret (snd accessToken) (snd accessTokenSecret)
+
   -- タイムライン表示
   showTimeline gui oauth
   timeoutAdd (showTimeline gui oauth) 30000

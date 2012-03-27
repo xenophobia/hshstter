@@ -17,10 +17,10 @@ import qualified Data.ByteString.Lazy as L
 
 -- OAuth型
 data OAuth = OAuth {
-      consumerKey :: String,
-      consumerSecret :: String,
-      accessToken :: String,
-      accessTokenSecret :: String
+      consumerKey :: !String,
+      consumerSecret :: !String,
+      accessToken :: !String,
+      accessTokenSecret :: !String
     }
 -- パラメータ型
 type Parameter = (String, String)

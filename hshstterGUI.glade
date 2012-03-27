@@ -1,44 +1,141 @@
 <?xml version="1.0"?>
 <glade-interface>
+  <!-- interface-requires gtk+ 2.6 -->
+  <!-- interface-naming-policy toplevel-contextual -->
   <widget class="GtkWindow" id="mainWin">
+    <property name="width_request">800</property>
+    <property name="height_request">600</property>
+    <child>
+      <widget class="GtkVBox" id="vbox1">
+        <property name="visible">True</property>
+        <child>
+          <widget class="GtkHBox" id="hbox1">
+            <property name="visible">True</property>
+            <child>
+              <widget class="GtkEntry" id="tweetEntry">
+                <property name="height_request">30</property>
+                <property name="visible">True</property>
+                <property name="can_focus">True</property>
+                <property name="invisible_char">&#x25CF;</property>
+              </widget>
+              <packing>
+                <property name="position">0</property>
+              </packing>
+            </child>
+            <child>
+              <widget class="GtkButton" id="tweetButton">
+                <property name="label" translatable="yes">tweet</property>
+                <property name="width_request">60</property>
+                <property name="height_request">30</property>
+                <property name="visible">True</property>
+                <property name="can_focus">True</property>
+                <property name="receives_default">True</property>
+              </widget>
+              <packing>
+                <property name="expand">False</property>
+                <property name="fill">False</property>
+                <property name="position">1</property>
+              </packing>
+            </child>
+          </widget>
+          <packing>
+            <property name="expand">False</property>
+            <property name="fill">False</property>
+            <property name="position">0</property>
+          </packing>
+        </child>
+        <child>
+          <widget class="GtkScrolledWindow" id="timelineWindow">
+            <property name="visible">True</property>
+            <property name="can_focus">True</property>
+            <property name="hscrollbar_policy">automatic</property>
+            <property name="vscrollbar_policy">automatic</property>
+            <child>
+              <widget class="GtkTextView" id="timeline">
+                <property name="visible">True</property>
+                <property name="can_focus">True</property>
+                <property name="editable">False</property>
+              </widget>
+            </child>
+          </widget>
+          <packing>
+            <property name="position">1</property>
+          </packing>
+        </child>
+      </widget>
+    </child>
+  </widget>
+  <widget class="GtkWindow" id="accessTokenGetWin">
+    <property name="width_request">300</property>
+    <property name="height_request">200</property>
+    <property name="resizable">False</property>
     <child>
       <widget class="GtkFixed" id="fixed1">
         <property name="visible">True</property>
         <child>
-          <widget class="GtkEntry" id="tweetEntry">
-            <property name="width_request">620</property>
-            <property name="height_request">25</property>
+          <widget class="GtkLabel" id="hint">
+            <property name="width_request">366</property>
+            <property name="height_request">34</property>
+            <property name="visible">True</property>
+            <property name="label" translatable="yes">Please access this address with a browser,
+and input PIN code.</property>
+          </widget>
+          <packing>
+            <property name="x">42</property>
+            <property name="y">20</property>
+          </packing>
+        </child>
+        <child>
+          <widget class="GtkEntry" id="entry1">
+            <property name="width_request">394</property>
+            <property name="height_request">29</property>
             <property name="visible">True</property>
             <property name="can_focus">True</property>
             <property name="invisible_char">&#x25CF;</property>
           </widget>
           <packing>
-            <property name="y">1</property>
+            <property name="x">24</property>
+            <property name="y">120</property>
           </packing>
         </child>
         <child>
-          <widget class="GtkButton" id="tweetButton">
-            <property name="label" translatable="yes">tweet</property>
-            <property name="width_request">61</property>
-            <property name="height_request">27</property>
+          <widget class="GtkButton" id="button1">
+            <property name="label" translatable="yes">button</property>
+            <property name="width_request">100</property>
+            <property name="height_request">40</property>
             <property name="visible">True</property>
             <property name="can_focus">True</property>
             <property name="receives_default">True</property>
           </widget>
           <packing>
-            <property name="x">620</property>
+            <property name="x">113</property>
+            <property name="y">198</property>
           </packing>
         </child>
         <child>
-          <widget class="GtkTextView" id="timeline">
-            <property name="width_request">680</property>
-            <property name="height_request">576</property>
+          <widget class="GtkButton" id="button2">
+            <property name="label" translatable="yes">button</property>
+            <property name="width_request">100</property>
+            <property name="height_request">40</property>
             <property name="visible">True</property>
             <property name="can_focus">True</property>
+            <property name="receives_default">True</property>
           </widget>
           <packing>
-            <property name="x">1</property>
-            <property name="y">25</property>
+            <property name="x">225</property>
+            <property name="y">199</property>
+          </packing>
+        </child>
+        <child>
+          <widget class="GtkLabel" id="authorizationURL">
+            <property name="width_request">288</property>
+            <property name="height_request">38</property>
+            <property name="visible">True</property>
+            <property name="label" translatable="yes">label</property>
+          </widget>
+          <packing>
+            <property name="x">73</property>
+            <property name="y">69</property>
           </packing>
         </child>
       </widget>

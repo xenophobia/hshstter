@@ -1,0 +1,47 @@
+<?xml version="1.0"?>
+<glade-interface>
+  <widget class="GtkWindow" id="mainWin">
+    <child>
+      <widget class="GtkFixed" id="fixed1">
+        <property name="visible">True</property>
+        <child>
+          <widget class="GtkEntry" id="tweetEntry">
+            <property name="width_request">620</property>
+            <property name="height_request">25</property>
+            <property name="visible">True</property>
+            <property name="can_focus">True</property>
+            <property name="invisible_char">&#x25CF;</property>
+          </widget>
+          <packing>
+            <property name="y">1</property>
+          </packing>
+        </child>
+        <child>
+          <widget class="GtkButton" id="tweetButton">
+            <property name="label" translatable="yes">tweet</property>
+            <property name="width_request">61</property>
+            <property name="height_request">27</property>
+            <property name="visible">True</property>
+            <property name="can_focus">True</property>
+            <property name="receives_default">True</property>
+          </widget>
+          <packing>
+            <property name="x">620</property>
+          </packing>
+        </child>
+        <child>
+          <widget class="GtkTextView" id="timeline">
+            <property name="width_request">680</property>
+            <property name="height_request">576</property>
+            <property name="visible">True</property>
+            <property name="can_focus">True</property>
+          </widget>
+          <packing>
+            <property name="x">1</property>
+            <property name="y">25</property>
+          </packing>
+        </child>
+      </widget>
+    </child>
+  </widget>
+</glade-interface>
