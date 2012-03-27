@@ -18,40 +18,11 @@ import qualified Data.ByteString.Lazy as L
 
 -- OAuth型
 data OAuth = OAuth {
-      consumerKey :: !(IORef String),
-      consumerSecret :: !(IORef String),
-      accessToken :: !(IORef String),
-      accessTokenSecret :: !(IORef String)
+      consumerKey :: !String,
+      consumerSecret :: !String,
+      accessToken :: !String,
+      accessTokenSecret :: !String
     }
-
--- Oauth型を生成
-newOAuth :: String -> String -> String -> String -> IO OAuth
-newOAuth oauthConsumerKey_ oauthConsumerSecret_ oauthAccessToken_ oauthAccessTokenSecret_ = do
-  oauthConsumerKey <- newIORef oauthConsumerKey_
-  oauthConsumerSecret <- newIORef oauthConsumerSecret_
-  oauthAccessToken <- newIORef oauthAccessToken_
-  oauthAccessTokenSecret <- newIORef oauthAccessTokenSecret_
-  return $ OAuth oauthConsumerKey oauthConsumerSecret oauthAccessToken oauthAccessTokenSecret
-
--- 各フィールドに書き込み
-setConsumerKey :: OAuth -> String -> IO ()
-setConsumerKey oauth set = writeIORef (consumerKey oauth) set
-setConsumerSecret :: OAuth -> String -> IO ()
-setConsumerSecret oauth set = writeIORef (consumerSecret oauth) set
-setAccessToken :: OAuth -> String -> IO ()
-setAccessToken oauth set = writeIORef (accessToken oauth) set
-setAccessTokenSecret :: OAuth -> String -> IO ()
-setAccessTokenSecret oauth set = writeIORef (accessTokenSecret oauth) set
-
--- 各フィールドの読み込み
-getConsumerKey :: OAuth -> IO String
-getConsumerKey oauth = readIORef (consumerKey oauth)
-getConsumerSecret :: OAuth -> IO String
-getConsumerSecret oauth = readIORef (consumerSecret oauth)
-getAccessToken :: OAuth -> IO String
-getAccessToken oauth = readIORef (accessToken oauth)
-getAccessTokenSecret :: OAuth -> IO String
-getAccessTokenSecret oauth = readIORef (accessTokenSecret oauth)
 
 -- パラメータ型
 type Parameter = (String, String)
@@ -100,9 +71,9 @@ apiRequestURL api = "http://api.twitter.com/1/statuses/" ++ api ++ ".json"
 -- OAuth Request 生成
 oauthRequest :: OAuth -> String -> String -> [Parameter] -> IO Request_String
 oauthRequest oauth url token parameter = do
-  key <- getConsumerKey oauth -- Consumer key
-  secret <- getConsumerSecret oauth -- Consumer Secret
-  let uri = fromJust . parseURI $ url -- URI
+  let key = consumerKey oauth -- Consumer key
+      secret = consumerSecret oauth -- Consumer Secret
+      uri = fromJust . parseURI $ url -- URI
   timestamp <- show . (\(TOD i _) -> i) <$> getClockTime -- タイムスタンプ取得
   nonce <- show <$> randomRIO (0, maxBound::Int) -- 乱数取得
   let authorizationParameters_ = parameter ++ [
@@ -126,11 +97,11 @@ oauthRequest oauth url token parameter = do
 -- APIリクエスト
 apiRequest :: OAuth -> String -> RequestMethod -> [Parameter] -> IO Request_String
 apiRequest oauth api method args = do
-  key <- getConsumerKey oauth -- Consumer key
-  token <- getAccessToken oauth -- AccessToken
-  secret_Consumer <- getConsumerSecret oauth -- Consumer Secret
-  secret_AccessToken <- getAccessTokenSecret oauth -- AccessToken Secret
-  let url = apiRequestURL api
+  let key = consumerKey oauth -- Consumer key
+      token = accessToken oauth -- AccessToken
+      secret_Consumer = consumerSecret oauth -- Consumer Secret
+      secret_AccessToken = accessTokenSecret oauth -- AccessToken Secret
+      url = apiRequestURL api
       uri = fromJust . parseURI $ if method == POST then url else url ++ "?" ++ urlEncodeVars args  -- URI
   timestamp <- show . (\(TOD i _) -> i) <$> getClockTime -- タイムスタンプ取得
   nonce <- show <$> randomRIO (0, maxBound::Int) -- 乱数取得

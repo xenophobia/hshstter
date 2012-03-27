@@ -22,7 +22,7 @@ import Data.Char
 import qualified Codec.Binary.Base64 as B64
 import qualified Data.ByteString.Lazy as L
 
-import Graphics.UI.Gtk hiding (add, disconnect)
+import Graphics.UI.Gtk hiding (add)
 import Graphics.UI.Gtk.Glade
 import Control.Concurrent
 
@@ -41,9 +41,10 @@ data GUI = GUI {
       authorizationURL :: !Entry
     }
 
--- アクセストークンを所持していなかった場合、OAuth認証をユーザに行なってもらう
+-- Access Tokenを所持していなかった場合、OAuth認証をユーザに行なってもらう
 authorization :: GUI -> OAuth -> IO ()
 authorization gui oauth = do
+  -- 認証用ウインドウ表示
   widgetShowAll (accessTokenGetWin gui)
   -- リクエストトークン発行要求リクエスト生成
   requestForGetRequestToken <- oauthRequest oauth requestTokenURL "" []
@@ -64,37 +65,35 @@ authorization gui oauth = do
                                     entrySetText (pinEntry gui) ""
                                     labelSetText (hint gui) "Sorry, Failed to authorize your account. Please try again."
 
--- アクセストークンを新規に取得
+-- Access Tokenを新規に取得
 getNewAccessToken :: GUI -> OAuth -> Parameter -> Parameter -> IO ()
 getNewAccessToken gui oauth requestToken requestTokenSecret = do
   -- PIN入力 -> oauth_verifierパラメータとして束縛
   verifier <- ("oauth_varifier",) <$> entryGetText (pinEntry gui)
-  -- アクセストークン発行要求リクエスト生成
+  -- Access Token発行要求リクエスト生成
   requestForGetAccessToken <- oauthRequest oauth accessTokenURL (snd requestTokenSecret) [requestToken, verifier]
-  -- アクセストークン取得
+  -- Access Token取得
   accessTokenParameters <- (fmap $ parseParameter . rspBody) . simpleHTTPIO $ requestForGetAccessToken
   accessToken <- getParameter accessTokenParameters "oauth_token"
   accessTokenSecret <- getParameter accessTokenParameters "oauth_token_secret"
-  -- アクセストークン保持ファイルaccess.iniにアクセストークンをセーブ
+  -- Access Token保持ファイルaccess.iniにAccess Tokenをセーブ
   fout <- openFile "./access.ini" WriteMode
   hPutStrLn fout (snd accessToken)
   hPutStrLn fout (snd accessTokenSecret)
   hClose fout
-  setAccessToken oauth (snd accessToken)
-  setAccessTokenSecret oauth (snd accessTokenSecret)
-  mainRoutine gui oauth
+  -- Access Tokenを設定したOAuthを引数に、メインルーチンを呼ぶ
+  mainRoutine gui $ OAuth (consumerKey oauth) (consumerSecret oauth) (snd accessToken) (snd accessTokenSecret)
 
--- アクセストークンを読み込む
+-- Access Tokenを読み込む
 restoreAccessToken :: GUI -> OAuth -> IO ()
 restoreAccessToken gui oauth = do
-  -- アクセストークン読み込み
+  -- Access Token読み込み
   fin <- openFile "./access.ini" ReadMode
   accessToken <- hGetLine fin
   accessTokenSecret <- hGetLine fin
   hClose fin
-  setAccessToken oauth accessToken
-  setAccessTokenSecret oauth accessTokenSecret
-  mainRoutine gui oauth
+  -- Access Tokenを設定したOAuthを引数に、メインルーチンを呼ぶ
+  mainRoutine gui $ OAuth (consumerKey oauth) (consumerSecret oauth) accessToken accessTokenSecret
 
 xmlNewIO :: FilePath -> IO GladeXML
 xmlNewIO gladePath = do
@@ -119,7 +118,7 @@ loadGlade gladePath = do
   guiTimeline <- xmlGetWidget xml castToTextView "timeline"
   -- スクロールバーをロード
   guiTimelineWindow <- xmlGetWidget xml castToScrolledWindow "timelineWindow"
-  -- アクセストークン取得ウインドウをロード
+  -- Access Token取得ウインドウをロード
   guiAccessTokenWin <- xmlGetWidget xml castToWindow "accessTokenGetWin"
   -- 認証用メッセージをロード
   guiHint <- xmlGetWidget xml castToLabel "hint"
@@ -207,9 +206,9 @@ main gladePath = do
   consumerKey <- hGetLine fin
   consumerSecret <- hGetLine fin
   hClose fin
-  oauth <- newOAuth consumerKey consumerSecret "" ""
+  let oauth = OAuth consumerKey consumerSecret "" ""
 
-  -- アクセストークン取得
+  -- Access Token取得
   restoreAccessToken gui oauth `catch` \_ -> authorization gui oauth
 
   -- メインループ
