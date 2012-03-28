@@ -6,21 +6,11 @@ import OAuth
 import TweetJSON
 
 import Network.HTTP
-import Network.URI
 import Text.JSON
-import Data.Maybe
-import Data.List
 import System.IO
-import System.Random
-import System.Time
-import Control.Arrow
+import Control.Monad
 import Control.Applicative
-import Data.Digest.Pure.SHA
-import qualified System.IO.UTF8 as U8
 import Codec.Binary.UTF8.String (decodeString, encodeString)
-import Data.Char
-import qualified Codec.Binary.Base64 as B64
-import qualified Data.ByteString.Lazy as L
 
 import Graphics.UI.Gtk hiding (add)
 import Graphics.UI.Gtk.Glade
@@ -50,7 +40,6 @@ authorization gui oauth = do
   requestTokenParameters <- parseParameter <$> oauthRequest oauth requestTokenURL "" []
   requestToken <- getParameter requestTokenParameters "oauth_token"
   requestTokenSecret <- getParameter requestTokenParameters "oauth_token_secret"
-  
   -- 認証ページのURLを提示
   entrySetText (authorizationURL gui) (authorizeURL ++ "?" ++ urlEncodeVars [requestToken])
   onClicked (authorizationButton gui) $ tryGetNewAccessToken gui oauth requestToken requestTokenSecret
@@ -135,19 +124,15 @@ showTimeline :: GUI -> OAuth -> IO Bool
 showTimeline gui oauth = do
   -- タイムラインから最新のツイートを取得
   res <- apiRequest oauth "home_timeline" GET [] `catch` \_ -> return "error"
-  let tryJSON = case decode res of
+  let tweetsJSON = case decode res of
                   Ok a -> a
                   Error _ -> JSNull
-  tweets <- getTimeline tryJSON `catch` \_ -> return []
-  if null tweets then
-      return True
-  else
-      do
-        -- text buffer生成
-        buffer <- textViewGetBuffer (timeline gui)
-        let tl = foldl (\s -> \t -> s ++ (show t) ++ "\n") "" tweets
-        textBufferSetText buffer tl
-        return True
+  tweets <- getTimeline tweetsJSON `catch` \_ -> return []
+  unless (null tweets) $ do
+    buffer <- textViewGetBuffer (timeline gui)
+    let tl = foldl (\s -> \t -> s ++ (show t) ++ "\n") "" tweets
+    textBufferSetText buffer tl
+  return True
 
 -- ツイートする
 tweet :: GUI -> OAuth -> IO ()
@@ -173,22 +158,15 @@ mainRoutine gui oauth = do
   onClicked (tweetButton gui) (tweet gui oauth)
   -- 認証用ウインドウ消去
   widgetHideAll (accessTokenGetWin gui)
-  
 
 main :: FilePath -> IO ()
 main gladePath = do
-
   -- GTK+システム初期化
   initGUI
-
   -- 他のスレッドが頻繁に走れるようにする
-  timeoutAddFull (yield >> return True)
-                 priorityDefaultIdle 100
-
+  timeoutAddFull (yield >> return True) priorityDefaultIdle 100
   -- .gladeファイルをロード
   gui <- loadGlade gladePath  -- ウインドウを表示
-  
-
   -- x/Canselボタンでウインドウを消去
   onDestroy (mainWin gui) mainQuit
   onDestroy (accessTokenGetWin gui) mainQuit
@@ -202,7 +180,7 @@ main gladePath = do
   hClose fin
   let oauth = OAuth consumerKey consumerSecret "" ""
 
-  -- Access Token取得
+  -- Access Tokenを取得し、メインウインドウを表示
   restoreAccessToken gui oauth `catch` \_ -> authorization gui oauth
 
   -- メインループ
