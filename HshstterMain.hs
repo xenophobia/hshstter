@@ -6,7 +6,6 @@ import OAuth
 import TweetJSON
 
 import Network.HTTP
-import Text.JSON
 import System.IO
 import Control.Monad
 import Control.Applicative
