@@ -46,10 +46,8 @@ authorization :: GUI -> OAuth -> IO ()
 authorization gui oauth = do
   -- 認証用ウインドウ表示
   widgetShowAll (accessTokenGetWin gui)
-  -- リクエストトークン発行要求リクエスト生成
-  requestForGetRequestToken <- oauthRequest oauth requestTokenURL "" []
   -- リクエストトークン取得
-  requestTokenParameters <- (fmap $ parseParameter . rspBody) . simpleHTTPIO $ requestForGetRequestToken
+  requestTokenParameters <- parseParameter <$> oauthRequest oauth requestTokenURL "" []
   requestToken <- getParameter requestTokenParameters "oauth_token"
   requestTokenSecret <- getParameter requestTokenParameters "oauth_token_secret"
   
@@ -70,10 +68,8 @@ getNewAccessToken :: GUI -> OAuth -> Parameter -> Parameter -> IO ()
 getNewAccessToken gui oauth requestToken requestTokenSecret = do
   -- PIN入力 -> oauth_verifierパラメータとして束縛
   verifier <- ("oauth_varifier",) <$> entryGetText (pinEntry gui)
-  -- Access Token発行要求リクエスト生成
-  requestForGetAccessToken <- oauthRequest oauth accessTokenURL (snd requestTokenSecret) [requestToken, verifier]
   -- Access Token取得
-  accessTokenParameters <- (fmap $ parseParameter . rspBody) . simpleHTTPIO $ requestForGetAccessToken
+  accessTokenParameters <- parseParameter <$> oauthRequest oauth accessTokenURL (snd requestTokenSecret) [requestToken, verifier]
   accessToken <- getParameter accessTokenParameters "oauth_token"
   accessTokenSecret <- getParameter accessTokenParameters "oauth_token_secret"
   -- Access Token保持ファイルaccess.iniにAccess Tokenをセーブ
@@ -138,8 +134,7 @@ loadGlade gladePath = do
 showTimeline :: GUI -> OAuth -> IO Bool
 showTimeline gui oauth = do
   -- タイムラインから最新のツイートを取得
-  newestTweet <- apiRequest oauth "home_timeline" GET []
-  res <- (fmap rspBody . simpleHTTPIO) newestTweet `catch` \_ -> return "error"
+  res <- apiRequest oauth "home_timeline" GET [] `catch` \_ -> return "error"
   let tryJSON = case decode res of
                   Ok a -> a
                   Error _ -> JSNull
@@ -158,8 +153,7 @@ showTimeline gui oauth = do
 tweet :: GUI -> OAuth -> IO ()
 tweet gui oauth = do
   tweetText <- entryGetText (tweetEntry gui)
-  tweet <- apiRequest oauth "update" POST [("status", encodeString tweetText)]
-  simpleHTTPIO_ tweet `catch` \_ -> return ()
+  apiRequest oauth "update" POST [("status", encodeString tweetText)] `catch` \_ -> return ""
   -- ツイート入力部をリセット
   entrySetText (tweetEntry gui) ""
   -- タイムラインを更新

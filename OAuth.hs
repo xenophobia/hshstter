@@ -60,69 +60,62 @@ genSignature consumerSecret tokenSecret method uri parameters =
 
 -- リクエストトークン取得URL
 requestTokenURL = "http://api.twitter.com/oauth/request_token"
+-- 認証ページURL
 authorizeURL = "http://api.twitter.com/oauth/authorize"
 -- アクセストークン取得URL
 accessTokenURL = "http://api.twitter.com/oauth/access_token"
-
 -- APIリクエストURL
 apiRequestURL :: String -> String
 apiRequestURL api = "http://api.twitter.com/1/statuses/" ++ api ++ ".json"
 
 -- OAuth Request 生成
-oauthRequest :: OAuth -> String -> String -> [Parameter] -> IO Request_String
+oauthRequest :: OAuth -> String -> String -> [Parameter] -> IO String
 oauthRequest oauth url token parameter = do
-  let key = consumerKey oauth -- Consumer key
-      secret = consumerSecret oauth -- Consumer Secret
-      uri = fromJust . parseURI $ url -- URI
   timestamp <- show . (\(TOD i _) -> i) <$> getClockTime -- タイムスタンプ取得
   nonce <- show <$> randomRIO (0, maxBound::Int) -- 乱数取得
   let authorizationParameters_ = parameter ++ [
-                                          ("oauth_consumer_key", key),
+                                          ("oauth_consumer_key", consumerKey oauth),
                                           ("oauth_nonce", nonce),
                                           ("oauth_timestamp", timestamp),
                                           ("oauth_signature_method", "HMAC-SHA1"),
                                           ("oauth_version", "1.0")
                                          ] -- 各種基本パラメータをセット
-      signature = genSignature secret token POST url authorizationParameters_ -- 署名生成
+      signature = genSignature (consumerSecret oauth) token POST url authorizationParameters_ -- 署名生成
       authorizationParameters = authorizationParameters_++[("oauth_signature", signature)] -- 署名をパラメータに加える
       authorizationHeader = mkHeader HdrAuthorization . ("OAuth "++) . urlEncodeParams $ authorizationParameters -- Authorizationヘッダ生成
-  -- Request を構成
-  return $ Request {
-               rqURI = uri,
-               rqMethod = POST,
-               rqHeaders = [authorizationHeader],
-               rqBody = ""
-             }
+  -- Requestを送信
+  rspBody <$> (simpleHTTPIO $ Request {
+                                  rqURI = fromJust . parseURI $ url,
+                                  rqMethod = POST,
+                                  rqHeaders = [authorizationHeader],
+                                  rqBody = ""
+                                })
 
 -- APIリクエスト
-apiRequest :: OAuth -> String -> RequestMethod -> [Parameter] -> IO Request_String
+apiRequest :: OAuth -> String -> RequestMethod -> [Parameter] -> IO String
 apiRequest oauth api method args = do
-  let key = consumerKey oauth -- Consumer key
-      token = accessToken oauth -- AccessToken
-      secret_Consumer = consumerSecret oauth -- Consumer Secret
-      secret_AccessToken = accessTokenSecret oauth -- AccessToken Secret
-      url = apiRequestURL api
+  let url = apiRequestURL api
       uri = fromJust . parseURI $ if method == POST then url else url ++ "?" ++ urlEncodeVars args  -- URI
   timestamp <- show . (\(TOD i _) -> i) <$> getClockTime -- タイムスタンプ取得
   nonce <- show <$> randomRIO (0, maxBound::Int) -- 乱数取得
   let authorizationParameters_ = [
-       ("oauth_token", token),
-       ("oauth_consumer_key", key),
+       ("oauth_token", accessToken oauth),
+       ("oauth_consumer_key", consumerKey oauth),
        ("oauth_nonce", nonce),
        ("oauth_timestamp", timestamp),
        ("oauth_signature_method", "HMAC-SHA1"),
        ("oauth_version", "1.0")] -- 各種基本パラメータをセット
-      signature = genSignature secret_Consumer secret_AccessToken method url (args ++ authorizationParameters_) -- 署名生成
+      signature = genSignature (consumerSecret oauth) (accessTokenSecret oauth) method url (args ++ authorizationParameters_) -- 署名生成
       authorizationParameters = authorizationParameters_++[("oauth_signature", signature)] -- 署名をパラメータに加える
       authorizationHeader = mkHeader HdrAuthorization . ("OAuth "++) . urlEncodeParams $ authorizationParameters -- Authorizationヘッダ生成
       contentLengthHeader = mkHeader HdrContentLength (show . length . urlEncodeVars $ args)
-  -- Request を構成
-  return $ Request {
-               rqURI = uri,
-               rqMethod = method,
-               rqHeaders = if method == POST then [authorizationHeader, contentLengthHeader] else [authorizationHeader] ,
-               rqBody = if method == POST then urlEncodeVars args else ""
-             }
+  -- Requestを送信
+  rspBody <$> (simpleHTTPIO $ Request {
+                                  rqURI = uri,
+                                  rqMethod = method,
+                                  rqHeaders = if method == POST then [authorizationHeader, contentLengthHeader] else [authorizationHeader] ,
+                                  rqBody = if method == POST then urlEncodeVars args else ""
+                                })
 
 -- simpleHTTP のIO版
 simpleHTTPIO :: HStream a => Request a -> IO (Response a)
@@ -131,6 +124,3 @@ simpleHTTPIO req = do
   case res of
     Right res' -> if rspCode res' == (2, 0, 0) then return res' else fail.show $ res'
     Left err -> fail.show $ err
-
-simpleHTTPIO_ :: HStream a => Request a -> IO ()
-simpleHTTPIO_ req = simpleHTTP req >> return ()
