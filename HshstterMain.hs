@@ -124,10 +124,7 @@ showTimeline :: GUI -> OAuth -> IO Bool
 showTimeline gui oauth = do
   -- タイムラインから最新のツイートを取得
   res <- apiRequest oauth "home_timeline" GET [] `catch` \_ -> return "error"
-  let tweetsJSON = case decode res of
-                  Ok a -> a
-                  Error _ -> JSNull
-  tweets <- getTimeline tweetsJSON `catch` \_ -> return []
+  tweets <- getTimeline res `catch` \_ -> return []
   unless (null tweets) $ do
     buffer <- textViewGetBuffer (timeline gui)
     let tl = foldl (\s -> \t -> s ++ (show t) ++ "\n") "" tweets

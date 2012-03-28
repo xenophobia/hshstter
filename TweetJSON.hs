@@ -50,9 +50,10 @@ getTweet jsobject = do
   return $ Tweet name screen_name retweeted created_at profile_image_url text
 
 -- タイムラインをTweet型のリストとして取得
-getTimeline :: Monad m => JSValue -> m [Tweet]
-getTimeline (JSArray tweets) = mapM (ofJSObject >=> getTweet) tweets
-getTimeline _ = fail "getTimeline: JSON format error"
+getTimeline :: Monad m => String -> m [Tweet]
+getTimeline rsp = case decode rsp of
+                    Ok (JSArray tweets) -> mapM (ofJSObject >=> getTweet) tweets
+                    _ -> fail "getTimeline: JSON format error"
 
 showOfTweet :: JSValue -> String
 showOfTweet JSNull = ""
