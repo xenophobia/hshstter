@@ -90,7 +90,6 @@ oauthRequest oauth url token parameter = do
   curl <- initialize
   -- Requestを送信
   setopts curl [CurlHttpHeaders [authorizationHeader, contentLengthHeader],
-                CurlCRLFile "./api.twitter.com",
                 CurlPostFieldSize 0,
                 CurlPost True]
   respBody <$> (do_curl_ curl url [] :: IO (CurlResponse_ [(String, String)] String))
@@ -112,11 +111,14 @@ apiRequest oauth api method args = do
       signature = genSignature (consumerSecret oauth) (accessTokenSecret oauth) method url (args ++ authorizationParameters_) -- 署名生成
       authorizationParameters = authorizationParameters_++[("oauth_signature", signature)] -- 署名をパラメータに加える
       authorizationHeader = ("Authorization: OAuth "++) . urlEncodeParams $ authorizationParameters -- Authorizationヘッダ生成
+      postFields = map (\(x, y) -> urlEncode x ++ "=" ++ urlEncode y) args
       contentLengthHeader = "Content-Length: " ++ (show . length . urlEncodeVars $ args)
       headers = if method==POST then [authorizationHeader, contentLengthHeader] else [authorizationHeader]
   -- Curlインスタンス初期化
   curl <- initialize
   -- Requestを送信
   setopts curl [CurlHttpHeaders headers]
-  when (method == POST) $ setopts curl [CurlPostFieldSize 0, CurlPost True]
+  when (method == POST) $ setopts curl [CurlPostFieldSize (fromIntegral . length . urlEncodeVars $ args),
+                                        CurlPost True,
+                                        CurlPostFields postFields]
   respBody <$> (do_curl_ curl accessurl [] :: IO (CurlResponse_ [(String, String)] String))
