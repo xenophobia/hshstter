@@ -2,11 +2,13 @@ module OAuth  where
 
 import Network.HTTP
 import Network.URI
+import Network.Curl
 import Data.Maybe
 import Data.List
 import System.IO
 import System.Random
 import System.Time
+import Control.Monad
 import Control.Arrow
 import Control.Applicative
 import Data.IORef
@@ -59,14 +61,14 @@ genSignature consumerSecret tokenSecret method uri parameters =
         B64.encode . L.unpack . bytestringDigest $ hmacSha1 signatureKey signatureBaseString -- HMAC-SHA1アルゴリズムでダイジェスト値を生成・Base64でエンコード
 
 -- リクエストトークン取得URL
-requestTokenURL = "http://api.twitter.com/oauth/request_token"
+requestTokenURL = "https://api.twitter.com/oauth/request_token"
 -- 認証ページURL
-authorizeURL = "http://api.twitter.com/oauth/authorize"
+authorizeURL = "https://api.twitter.com/oauth/authorize"
 -- アクセストークン取得URL
-accessTokenURL = "http://api.twitter.com/oauth/access_token"
+accessTokenURL = "https://api.twitter.com/oauth/access_token"
 -- APIリクエストURL
 apiRequestURL :: String -> String
-apiRequestURL api = "http://api.twitter.com/1/statuses/" ++ api ++ ".json"
+apiRequestURL api = "https://api.twitter.com/1/statuses/" ++ api ++ ".json"
 
 -- OAuth Request 生成
 oauthRequest :: OAuth -> String -> String -> [Parameter] -> IO String
@@ -82,20 +84,22 @@ oauthRequest oauth url token parameter = do
                                          ] -- 各種基本パラメータをセット
       signature = genSignature (consumerSecret oauth) token POST url authorizationParameters_ -- 署名生成
       authorizationParameters = authorizationParameters_++[("oauth_signature", signature)] -- 署名をパラメータに加える
-      authorizationHeader = mkHeader HdrAuthorization . ("OAuth "++) . urlEncodeParams $ authorizationParameters -- Authorizationヘッダ生成
+      authorizationHeader = ("Authorization: OAuth "++) . urlEncodeParams $ authorizationParameters -- Authorizationヘッダ生成
+      contentLengthHeader = "Content-Length: 0"
+  -- Curlインスタンス初期化
+  curl <- initialize
   -- Requestを送信
-  rspBody <$> (simpleHTTPIO $ Request {
-                                  rqURI = fromJust . parseURI $ url,
-                                  rqMethod = POST,
-                                  rqHeaders = [authorizationHeader],
-                                  rqBody = ""
-                                })
+  setopts curl [CurlHttpHeaders [authorizationHeader, contentLengthHeader],
+                CurlCRLFile "./api.twitter.com",
+                CurlPostFieldSize 0,
+                CurlPost True]
+  respBody <$> (do_curl_ curl url [] :: IO (CurlResponse_ [(String, String)] String))
 
 -- APIリクエスト
 apiRequest :: OAuth -> String -> RequestMethod -> [Parameter] -> IO String
 apiRequest oauth api method args = do
   let url = apiRequestURL api
-      uri = fromJust . parseURI $ if method == POST then url else url ++ "?" ++ urlEncodeVars args  -- URI
+      accessurl = if method == POST then url else url ++ "?" ++ urlEncodeVars args  -- URI
   timestamp <- show . (\(TOD i _) -> i) <$> getClockTime -- タイムスタンプ取得
   nonce <- show <$> randomRIO (0, maxBound::Int) -- 乱数取得
   let authorizationParameters_ = [
@@ -107,20 +111,12 @@ apiRequest oauth api method args = do
        ("oauth_version", "1.0")] -- 各種基本パラメータをセット
       signature = genSignature (consumerSecret oauth) (accessTokenSecret oauth) method url (args ++ authorizationParameters_) -- 署名生成
       authorizationParameters = authorizationParameters_++[("oauth_signature", signature)] -- 署名をパラメータに加える
-      authorizationHeader = mkHeader HdrAuthorization . ("OAuth "++) . urlEncodeParams $ authorizationParameters -- Authorizationヘッダ生成
-      contentLengthHeader = mkHeader HdrContentLength (show . length . urlEncodeVars $ args)
+      authorizationHeader = ("Authorization: OAuth "++) . urlEncodeParams $ authorizationParameters -- Authorizationヘッダ生成
+      contentLengthHeader = "Content-Length: " ++ (show . length . urlEncodeVars $ args)
+      headers = if method==POST then [authorizationHeader, contentLengthHeader] else [authorizationHeader]
+  -- Curlインスタンス初期化
+  curl <- initialize
   -- Requestを送信
-  rspBody <$> (simpleHTTPIO $ Request {
-                                  rqURI = uri,
-                                  rqMethod = method,
-                                  rqHeaders = if method == POST then [authorizationHeader, contentLengthHeader] else [authorizationHeader] ,
-                                  rqBody = if method == POST then urlEncodeVars args else ""
-                                })
-
--- simpleHTTP のIO版
-simpleHTTPIO :: HStream a => Request a -> IO (Response a)
-simpleHTTPIO req = do
-  res <- simpleHTTP req
-  case res of
-    Right res' -> if rspCode res' == (2, 0, 0) then return res' else fail.show $ res'
-    Left err -> fail.show $ err
+  setopts curl [CurlHttpHeaders headers]
+  when (method == POST) $ setopts curl [CurlPostFieldSize 0, CurlPost True]
+  respBody <$> (do_curl_ curl accessurl [] :: IO (CurlResponse_ [(String, String)] String))
