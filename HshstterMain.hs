@@ -1,4 +1,6 @@
 {-# LANGUAGE TupleSections #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE DeriveDataTypeable #-}
 
 module HshstterMain where
 
@@ -7,6 +9,9 @@ import TweetJSON
 
 import Debug.Trace
 
+import Prelude hiding (catch)
+import Data.Typeable
+import Control.Exception
 import Network.Curl
 import Network.HTTP
 import System.IO
@@ -50,7 +55,7 @@ authorization gui oauth = do
       where
         tryGetNewAccessToken gui oauth requestToken requestTokenSecret =
             getNewAccessToken gui oauth requestToken requestTokenSecret
-                                  `catch` \_ -> do
+                                  `catch` \(e::SomeException) -> do
                                     -- 認証に失敗したら再試行
                                     entrySetText (pinEntry gui) ""
                                     labelSetText (hint gui) "Sorry, Failed to authorize your account. Please try again."
@@ -122,14 +127,18 @@ loadGlade gladePath = do
 updateTimeline :: GUI -> OAuth -> Curl -> IO Bool
 updateTimeline gui oauth curl = do
   -- タイムラインから最新のツイートを取得
-  res <- apiRequest curl oauth "home_timeline" GET [] `catch` \_ -> return "error"
-  tweets <- getTimeline res `catch` \_ -> return []
+  res <- apiRequest curl oauth "home_timeline" GET [] `catch` \(e::SomeException) -> return "error"
+  tweets <- getTimeline res `catch` \(e::SomeException) -> return []
   unless (null tweets) $ do
     buffer <- textViewGetBuffer (timeline gui)
     let tl = foldl (\s -> \t -> s ++ (show t) ++ "\n") "" tweets
     textBufferSetText buffer tl
   reset curl
   return True
+
+data TweetErrorType = EmptyTweet | CharactorExceeded | APIError deriving (Show, Typeable)
+data TweetError = TweetError TweetErrorType deriving (Show, Typeable)
+instance Exception TweetError
 
 -- ツイートする
 tweet :: GUI -> OAuth -> Curl -> Curl -> IO ()
@@ -148,20 +157,21 @@ tweet gui oauth curlTweet curlTimeline = do
           tweetText <- entryGetText (tweetEntry gui)
           let lengthOfTweet = length tweetText
           if lengthOfTweet == 0
-            then fail "Please input some messages."
-            else if lengthOfTweet > 140 then fail "You cannot transmit a tweet exceeding 140 characters."
+            then throw (TweetError EmptyTweet)
+            else if lengthOfTweet > 140 then throw (TweetError CharactorExceeded)
             else do
-              apiRequest curlTweet oauth "update" POST [("status", encodeString tweetText)]
+              apiRequest curlTweet oauth "update" POST [("status", encodeString tweetText)] `catch` \(_::SomeException) -> throw (TweetError APIError)
               -- ツイート入力部をリセット
               entrySetText (tweetEntry gui) ""
               -- 情報ラベル初期化
               labelSetText (information gui) ("From: " ++ (OAuth.screen_name oauth))
-        tweetErrorHandle err = case show err of
-                                 "user error (Please input some messages.)" ->
-                                     labelSetText (information gui) ("Error: Please input some messages.")
-                                 "user error (You cannot transmit a tweet exceeding 140 characters.)" ->
-                                     labelSetText (information gui) ("Error: You cannot transmit a tweet exceeding 140 characters.")
-                                 _ -> labelSetText (information gui) ("Error: Please try again.")
+        tweetErrorHandle (TweetError err) =
+            let errMessage = case err of
+                               EmptyTweet -> "Please input some messages."
+                               CharactorExceeded -> "You cannot transmit a tweet exceeding 140 characters."
+                               APIError -> "API problem, please try again."
+            in
+              labelSetText (information gui) $ "Error: " ++ errMessage
 
 
 -- メインウインドウ表示・タイムライン表示・更新タイマ作動・ツイートボタンにハンドラを設定（・認証用ウインドウ消去）
@@ -205,7 +215,7 @@ main gladePath = do
   let oauth = OAuth consumerKey consumerSecret "" "" "" ""
 
   -- Access Tokenを取得し、メインウインドウを表示
-  restoreAccessToken gui oauth `catch` \_ -> authorization gui oauth
+  restoreAccessToken gui oauth `catch` \(e::SomeException) -> authorization gui oauth
 
   -- メインループ
   mainGUI
