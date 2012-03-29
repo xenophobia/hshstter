@@ -5,6 +5,7 @@ module HshstterMain where
 import OAuth
 import TweetJSON
 
+import Network.Curl
 import Network.HTTP
 import System.IO
 import Control.Monad
@@ -119,26 +120,28 @@ loadGlade gladePath = do
                       guiAccessTokenWin guiHint guiAuthorizationButton guiCancelButton guiPinEntry guiAuthorizationURL
 
 -- タイムラインを表示
-showTimeline :: GUI -> OAuth -> IO Bool
-showTimeline gui oauth = do
+showTimeline :: GUI -> OAuth -> Curl -> IO Bool
+showTimeline gui oauth curl = do
   -- タイムラインから最新のツイートを取得
-  res <- apiRequest oauth "home_timeline" GET [] `catch` \_ -> return "error"
+  res <- apiRequest curl oauth "home_timeline" GET [] `catch` \_ -> return "error"
   tweets <- getTimeline res `catch` \_ -> return []
   unless (null tweets) $ do
     buffer <- textViewGetBuffer (timeline gui)
     let tl = foldl (\s -> \t -> s ++ (show t) ++ "\n") "" tweets
     textBufferSetText buffer tl
+  reset curl
   return True
 
 -- ツイートする
-tweet :: GUI -> OAuth -> IO ()
-tweet gui oauth = do
+tweet :: GUI -> OAuth -> Curl -> Curl -> IO ()
+tweet gui oauth curlTweet curlTimeline = do
   tweetText <- entryGetText (tweetEntry gui)
-  apiRequest oauth "update" POST [("status", encodeString tweetText)] `catch` \_ -> return ""
+  apiRequest curlTweet oauth "update" POST [("status", encodeString tweetText)] `catch` \_ -> return ""
   -- ツイート入力部をリセット
   entrySetText (tweetEntry gui) ""
   -- タイムラインを更新
-  showTimeline gui oauth
+  showTimeline gui oauth curlTimeline
+  reset curlTweet
   return ()
 
 -- メインウインドウ表示・タイムライン表示・更新タイマ作動・ツイートボタンにハンドラを設定（・認証用ウインドウ消去）
@@ -147,11 +150,13 @@ mainRoutine gui oauth = do
   -- メインウインドウ表示
   widgetShowAll (mainWin gui)
   -- タイムライン更新
-  showTimeline gui oauth
+  curlTimeline <- initialize
+  showTimeline gui oauth curlTimeline
   -- タイムラインを一定のインターバルごとに更新
-  timeoutAdd (showTimeline gui oauth) 30000
+  timeoutAdd (showTimeline gui oauth curlTimeline) 30000
   -- "tweet"ボタンでツイート
-  onClicked (tweetButton gui) (tweet gui oauth)
+  curlTweet <- initialize
+  onClicked (tweetButton gui) (tweet gui oauth curlTweet curlTimeline)
   -- 認証用ウインドウ消去
   widgetHideAll (accessTokenGetWin gui)
 

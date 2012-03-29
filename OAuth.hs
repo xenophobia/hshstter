@@ -95,8 +95,8 @@ oauthRequest oauth url token parameter = do
   respBody <$> (do_curl_ curl url [] :: IO (CurlResponse_ [(String, String)] String))
 
 -- APIリクエスト
-apiRequest :: OAuth -> String -> RequestMethod -> [Parameter] -> IO String
-apiRequest oauth api method args = do
+apiRequest :: Curl -> OAuth -> String -> RequestMethod -> [Parameter] -> IO String
+apiRequest curl oauth api method args = do
   let url = apiRequestURL api
       accessurl = if method == POST then url else url ++ "?" ++ urlEncodeVars args  -- URI
   timestamp <- show . (\(TOD i _) -> i) <$> getClockTime -- タイムスタンプ取得
@@ -112,13 +112,12 @@ apiRequest oauth api method args = do
       authorizationParameters = authorizationParameters_++[("oauth_signature", signature)] -- 署名をパラメータに加える
       authorizationHeader = ("Authorization: OAuth "++) . urlEncodeParams $ authorizationParameters -- Authorizationヘッダ生成
       postFields = map (\(x, y) -> urlEncode x ++ "=" ++ urlEncode y) args
-      contentLengthHeader = "Content-Length: " ++ (show . length . urlEncodeVars $ args)
+      contentLength = length . urlEncodeVars $ args
+      contentLengthHeader = "Content-Length: " ++ show contentLength
       headers = if method==POST then [authorizationHeader, contentLengthHeader] else [authorizationHeader]
-  -- Curlインスタンス初期化
-  curl <- initialize
   -- Requestを送信
   setopts curl [CurlHttpHeaders headers]
-  when (method == POST) $ setopts curl [CurlPostFieldSize (fromIntegral . length . urlEncodeVars $ args),
+  when (method == POST) $ setopts curl [CurlPostFieldSize (fromIntegral contentLength),
                                         CurlPost True,
                                         CurlPostFields postFields]
   respBody <$> (do_curl_ curl accessurl [] :: IO (CurlResponse_ [(String, String)] String))
