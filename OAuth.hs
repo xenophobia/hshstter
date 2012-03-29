@@ -23,7 +23,9 @@ data OAuth = OAuth {
       consumerKey :: !String,
       consumerSecret :: !String,
       accessToken :: !String,
-      accessTokenSecret :: !String
+      accessTokenSecret :: !String,
+      user_id :: !String,
+      screen_name :: !String
     }
 
 -- パラメータ型
