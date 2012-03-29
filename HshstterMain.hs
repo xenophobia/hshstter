@@ -7,8 +7,11 @@ module HshstterMain where
 import OAuth
 import TweetJSON
 
-import Debug.Trace
-
+import Data.List
+import Data.Conduit
+import qualified Data.Conduit.List as CL
+import qualified Data.Conduit.Binary as CB
+import Data.ByteString.Char8 (ByteString, pack, unpack)
 import Prelude hiding (catch)
 import Data.Typeable
 import Control.Exception
@@ -39,6 +42,10 @@ data GUI = GUI {
       authorizationURL :: !Entry
     }
 
+-- 情報表示を初期状態(From: (screen_name))にする
+initInformation :: GUI -> OAuth -> IO ()
+initInformation gui oauth = labelSetText (information gui) ("From: " ++ (OAuth.screen_name oauth))
+
 -- Access Tokenを所持していなかった場合、OAuth認証をユーザに行なってもらう
 authorization :: GUI -> OAuth -> IO ()
 authorization gui oauth = do
@@ -66,31 +73,23 @@ getNewAccessToken gui oauth requestToken requestTokenSecret = do
   -- PIN入力 -> oauth_verifierパラメータとして束縛
   verifier <- ("oauth_varifier",) <$> entryGetText (pinEntry gui)
   -- Access Token取得
-  accessTokenParameters <- parseParameter . (\s -> trace s s) <$> oauthRequest oauth accessTokenURL (snd requestTokenSecret) [requestToken, verifier]
+  accessTokenParameters <- parseParameter <$> oauthRequest oauth accessTokenURL (snd requestTokenSecret) [requestToken, verifier]
   accessToken <- getParameter accessTokenParameters "oauth_token"
   accessTokenSecret <- getParameter accessTokenParameters "oauth_token_secret"
   my_user_id <- getParameter accessTokenParameters "user_id"
   my_screen_name <- getParameter accessTokenParameters "screen_name"
+  accessTokenData@(accessToken:accessTokenSecret:my_user_id:my_screen_name:[])
+      <- mapM (fmap snd . getParameter accessTokenParameters) ["oauth_token", "oauth_token_secret", "user_id", "screen_name"]
   -- Access Token保持ファイルaccess.iniにAccess Token及びユーザ情報をセーブ
-  fout <- openFile "./access.ini" WriteMode
-  hPutStrLn fout (snd accessToken)
-  hPutStrLn fout (snd accessTokenSecret)
-  hPutStrLn fout (snd my_user_id)
-  hPutStrLn fout (snd my_screen_name)
-  hClose fout
+  runResourceT $ CL.sourceList ((:[]) . intercalate "\n" $ accessTokenData) $= CL.map pack $$ CB.sinkFile "access.ini"
   -- Access Tokenを設定したOAuthを引数に、メインルーチンを呼ぶ
-  mainRoutine gui $ OAuth (consumerKey oauth) (consumerSecret oauth) (snd accessToken) (snd accessTokenSecret) (snd my_user_id) (snd my_screen_name)
+  mainRoutine gui $ OAuth (consumerKey oauth) (consumerSecret oauth) accessToken accessTokenSecret my_user_id my_screen_name
 
 -- Access Tokenを読み込む
 restoreAccessToken :: GUI -> OAuth -> IO ()
 restoreAccessToken gui oauth = do
   -- Access Token読み込み
-  fin <- openFile "./access.ini" ReadMode
-  accessToken <- hGetLine fin
-  accessTokenSecret <- hGetLine fin
-  my_user_id <- hGetLine fin
-  my_screen_name <- hGetLine fin
-  hClose fin
+  (accessToken:accessTokenSecret:my_user_id:my_screen_name:[]) <- runResourceT $ CB.sourceFile "./access.ini" $= CB.lines $= CL.map unpack $$ CL.take 4
   -- Access Tokenを設定したOAuthを引数に、メインルーチンを呼ぶ
   mainRoutine gui $ OAuth (consumerKey oauth) (consumerSecret oauth) accessToken accessTokenSecret my_user_id my_screen_name
 
@@ -164,7 +163,7 @@ tweet gui oauth curlTweet curlTimeline = do
               -- ツイート入力部をリセット
               entrySetText (tweetEntry gui) ""
               -- 情報ラベル初期化
-              labelSetText (information gui) ("From: " ++ (OAuth.screen_name oauth))
+              initInformation gui oauth
         tweetErrorHandle (TweetError err) =
             let errMessage = case err of
                                EmptyTweet -> "Please input some messages."
@@ -178,8 +177,7 @@ tweet gui oauth curlTweet curlTimeline = do
 mainRoutine :: GUI -> OAuth -> IO ()
 mainRoutine gui oauth = do
   -- 情報ラベル初期化
-  labelSetText (information gui) ("From: " ++ (OAuth.screen_name oauth))
-
+  initInformation gui oauth
   -- メインウインドウ表示
   widgetShowAll (mainWin gui)
   -- タイムライン更新
@@ -206,12 +204,8 @@ main gladePath = do
   onDestroy (accessTokenGetWin gui) mainQuit
   onClicked (cancelButton gui) mainQuit
 
-  -- OAuth関連
   -- Consumer Key / Consumer Secret読み込み
-  fin <- openFile "./config.ini" ReadMode
-  consumerKey <- hGetLine fin
-  consumerSecret <- hGetLine fin
-  hClose fin
+  (consumerKey:consumerSecret:[]) <- runResourceT $ CB.sourceFile "./config.ini" $= CB.lines $= CL.map unpack $$ CL.take 2
   let oauth = OAuth consumerKey consumerSecret "" "" "" ""
 
   -- Access Tokenを取得し、メインウインドウを表示
