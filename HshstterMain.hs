@@ -74,10 +74,6 @@ getNewAccessToken gui oauth requestToken requestTokenSecret = do
   verifier <- ("oauth_varifier",) <$> entryGetText (pinEntry gui)
   -- Access Token取得
   accessTokenParameters <- parseParameter <$> oauthRequest oauth accessTokenURL (snd requestTokenSecret) [requestToken, verifier]
-  accessToken <- getParameter accessTokenParameters "oauth_token"
-  accessTokenSecret <- getParameter accessTokenParameters "oauth_token_secret"
-  my_user_id <- getParameter accessTokenParameters "user_id"
-  my_screen_name <- getParameter accessTokenParameters "screen_name"
   accessTokenData@(accessToken:accessTokenSecret:my_user_id:my_screen_name:[])
       <- mapM (fmap snd . getParameter accessTokenParameters) ["oauth_token", "oauth_token_secret", "user_id", "screen_name"]
   -- Access Token保持ファイルaccess.iniにAccess Token及びユーザ情報をセーブ
