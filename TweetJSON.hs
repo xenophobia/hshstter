@@ -37,7 +37,7 @@ ofJSObject :: Monad m => JSValue -> m (JSObject JSValue)
 ofJSObject (JSObject jsobject) = return jsobject
 ofJSObject _ = fail "ofJSBool: Not JSObject"
 
--- ツイートを取得
+-- tweetを取得
 getTweet :: Monad m => JSObject JSValue -> m Tweet
 getTweet jsobject = do
   user              <- ofJSObject =<< findJSObject jsobject "user"
@@ -49,11 +49,11 @@ getTweet jsobject = do
   text              <- ofJSString =<< findJSObject jsobject "text"
   return $ Tweet name screen_name retweeted created_at profile_image_url text
 
--- タイムラインをTweet型のリストとして取得
-getTimeline :: Monad m => String -> m [Tweet]
-getTimeline rsp = case decode rsp of
-                    Ok (JSArray tweets) -> mapM (ofJSObject >=> getTweet) tweets
-                    _ -> fail "getTimeline: JSON format error"
+-- tweetのリストを取得
+getTweetList :: Monad m => String -> m [Tweet]
+getTweetList rsp = case decode rsp of
+                     Ok (JSArray tweets) -> mapM (ofJSObject >=> getTweet) tweets
+                     _ -> fail "getTimeline: JSON format error"
 
 showOfTweet :: JSValue -> String
 showOfTweet JSNull = ""
