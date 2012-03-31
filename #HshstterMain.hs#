@@ -26,7 +26,7 @@ import Graphics.UI.Gtk hiding (add)
 import Graphics.UI.Gtk.Glade
 import Control.Concurrent
 
--- GUI¥Ç¡¼¥¿·¿
+-- GUIãƒ‡ãƒ¼ã‚¿å‹
 data GUI = GUI {
       mainWin :: !Window,
       information :: !Label,
@@ -42,48 +42,48 @@ data GUI = GUI {
       authorizationURL :: !Entry
     }
 
--- ¾ğÊóÉ½¼¨¤ò½é´ü¾õÂÖ(From: (screen_name))¤Ë¤¹¤ë
+-- æƒ…å ±è¡¨ç¤ºã‚’åˆæœŸçŠ¶æ…‹(From: (screen_name))ã«ã™ã‚‹
 initInformation :: GUI -> OAuth -> IO ()
 initInformation gui oauth = labelSetText (information gui) ("From: " ++ (OAuth.screen_name oauth))
 
--- Access Token¤ò½ê»ı¤·¤Æ¤¤¤Ê¤«¤Ã¤¿¾ì¹ç¡¢OAuthÇ§¾Ú¤ò¥æ¡¼¥¶¤Ë¹Ô¤Ê¤Ã¤Æ¤â¤é¤¦
+-- Access Tokenã‚’æ‰€æŒã—ã¦ã„ãªã‹ã£ãŸå ´åˆã€OAuthèªè¨¼ã‚’ãƒ¦ãƒ¼ã‚¶ã«è¡Œãªã£ã¦ã‚‚ã‚‰ã†
 authorization :: GUI -> OAuth -> IO ()
 authorization gui oauth = do
-  -- Ç§¾ÚÍÑ¥¦¥¤¥ó¥É¥¦É½¼¨
+  -- èªè¨¼ç”¨ã‚¦ã‚¤ãƒ³ãƒ‰ã‚¦è¡¨ç¤º
   widgetShowAll (accessTokenGetWin gui)
-  -- Request Token¼èÆÀ
+  -- Request Tokenå–å¾—
   (requestToken, requestTokenSecret) <- getRequestTokenParameter oauth
-  -- Ç§¾Ú¥Ú¡¼¥¸¤ÎURL¤òÉ½¼¨
+  -- èªè¨¼ãƒšãƒ¼ã‚¸ã®URLã‚’è¡¨ç¤º
   entrySetText (authorizationURL gui) (authorizeURL ++ "?" ++ urlEncodeVars [requestToken])
-  -- Ç§¾ÚÍÑ¥Ü¥¿¥ó¤ò¥¯¥ê¥Ã¥¯¤ÇÇ§¾Ú¤ò»î¤ß¤ë
+  -- èªè¨¼ç”¨ãƒœã‚¿ãƒ³ã‚’ã‚¯ãƒªãƒƒã‚¯ã§èªè¨¼ã‚’è©¦ã¿ã‚‹
   onClicked (authorizationButton gui) $ tryGetNewAccessToken gui oauth requestToken requestTokenSecret
   return ()
       where
         tryGetNewAccessToken gui oauth requestToken requestTokenSecret =
             getNewAccessToken gui oauth requestToken requestTokenSecret
                                   `catch` \(e::SomeException) -> do
-                                    -- Ç§¾Ú¤Ë¼ºÇÔ¤·¤¿¤éºÆ»î¹Ô
+                                    -- èªè¨¼ã«å¤±æ•—ã—ãŸã‚‰å†è©¦è¡Œ
                                     entrySetText (pinEntry gui) ""
                                     labelSetText (hint gui) "Sorry, Failed to authorize your account. Please try again."
 
--- Access Token¤ò¿·µ¬¤Ë¼èÆÀ
+-- Access Tokenã‚’æ–°è¦ã«å–å¾—
 getNewAccessToken :: GUI -> OAuth -> Parameter -> Parameter -> IO ()
 getNewAccessToken gui oauth requestToken requestTokenSecret = do
-  -- PINÆşÎÏ -> oauth_verifier¥Ñ¥é¥á¡¼¥¿¤È¤·¤ÆÂ«Çû
+  -- PINå…¥åŠ› -> oauth_verifierãƒ‘ãƒ©ãƒ¡ãƒ¼ã‚¿ã¨ã—ã¦æŸç¸›
   verifier <- ("oauth_varifier",) <$> entryGetText (pinEntry gui)
-  -- Access Token¼èÆÀ
+  -- Access Tokenå–å¾—
   accessTokenData@(accessToken:accessTokenSecret:my_user_id:my_screen_name:[]) <- getAccessTokenString oauth (snd requestTokenSecret) [requestToken, verifier]
-  -- Access TokenÊİ»ı¥Õ¥¡¥¤¥ëaccess.ini¤ËAccess TokenµÚ¤Ó¥æ¡¼¥¶¾ğÊó¤ò¥»¡¼¥Ö
+  -- Access Tokenä¿æŒãƒ•ã‚¡ã‚¤ãƒ«access.iniã«Access TokenåŠã³ãƒ¦ãƒ¼ã‚¶æƒ…å ±ã‚’ã‚»ãƒ¼ãƒ–
   runResourceT $ CL.sourceList accessTokenData $= CL.map (++"\n") $= CL.map pack $$ CB.sinkFile "access.ini"
-  -- Access Token¤òÀßÄê¤·¤¿OAuth¤ò°ú¿ô¤Ë¡¢¥á¥¤¥ó¥ë¡¼¥Á¥ó¤ò¸Æ¤Ö
+  -- Access Tokenã‚’è¨­å®šã—ãŸOAuthã‚’å¼•æ•°ã«ã€ãƒ¡ã‚¤ãƒ³ãƒ«ãƒ¼ãƒãƒ³ã‚’å‘¼ã¶
   mainRoutine gui $ OAuth (consumerKey oauth) (consumerSecret oauth) accessToken accessTokenSecret my_user_id my_screen_name
 
--- Access Token¤òÆÉ¤ß¹ş¤à
+-- Access Tokenã‚’èª­ã¿è¾¼ã‚€
 restoreAccessToken :: GUI -> OAuth -> IO ()
 restoreAccessToken gui oauth = do
-  -- Access TokenÆÉ¤ß¹ş¤ß
+  -- Access Tokenèª­ã¿è¾¼ã¿
   (accessToken:accessTokenSecret:my_user_id:my_screen_name:[]) <- runResourceT $ CB.sourceFile "./access.ini" $= CB.lines $= CL.map unpack $$ CL.take 4
-  -- Access Token¤òÀßÄê¤·¤¿OAuth¤ò°ú¿ô¤Ë¡¢¥á¥¤¥ó¥ë¡¼¥Á¥ó¤ò¸Æ¤Ö
+  -- Access Tokenã‚’è¨­å®šã—ãŸOAuthã‚’å¼•æ•°ã«ã€ãƒ¡ã‚¤ãƒ³ãƒ«ãƒ¼ãƒãƒ³ã‚’å‘¼ã¶
   mainRoutine gui $ OAuth (consumerKey oauth) (consumerSecret oauth) accessToken accessTokenSecret my_user_id my_screen_name
 
 xmlNewIO :: FilePath -> IO GladeXML
@@ -93,112 +93,111 @@ xmlNewIO gladePath = do
     Nothing -> fail "XML format error."
     Just xml -> return xml
 
--- .glade¥Õ¥¡¥¤¥ë¡ÊXML·Á¼°¡Ë¤ò¥í¡¼¥É¡¦GUI·¿¤ËÊÑ´¹
+-- .gladeãƒ•ã‚¡ã‚¤ãƒ«ï¼ˆXMLå½¢å¼ï¼‰ã‚’ãƒ­ãƒ¼ãƒ‰ãƒ»GUIå‹ã«å¤‰æ›
 loadGlade :: FilePath -> IO GUI
 loadGlade gladePath = do
-  -- XML¤ò¥í¡¼¥É
+  -- XMLã‚’ãƒ­ãƒ¼ãƒ‰
   xml <- xmlNewIO gladePath
 
-  guiMainWin <- xmlGetWidget xml castToWindow "mainWin"  -- ¥á¥¤¥ó¥¦¥¤¥ó¥É¥¦¤ò¥í¡¼¥É
-  guiInformation <- xmlGetWidget xml castToLabel "information"  -- ¾ğÊó
-  guiTweetEntry <- xmlGetWidget xml castToEntry "tweetEntry"  -- ¥Ä¥¤¡¼¥ÈÆşÎÏÉô¤ò¥í¡¼¥É
-  guiTweetButton <- xmlGetWidget xml castToButton "tweetButton"  -- ¥Ä¥¤¡¼¥È¥Ü¥¿¥ó¤ò¥í¡¼¥É
-  guiTimeline <- xmlGetWidget xml castToTextView "timeline"  -- ¥¿¥¤¥à¥é¥¤¥óÉ½¼¨Éô¤ò¥í¡¼¥É
-  guiTimelineWindow <- xmlGetWidget xml castToScrolledWindow "timelineWindow"  -- ¥¹¥¯¥í¡¼¥ë¥Ğ¡¼¤ò¥í¡¼¥É
-  guiAccessTokenWin <- xmlGetWidget xml castToWindow "accessTokenGetWin"  -- Access Token¼èÆÀ¥¦¥¤¥ó¥É¥¦¤ò¥í¡¼¥É
-  guiHint <- xmlGetWidget xml castToLabel "hint"  -- Ç§¾ÚÍÑ¥á¥Ã¥»¡¼¥¸¤ò¥í¡¼¥É
-  guiAuthorizationButton <- xmlGetWidget xml castToButton "authorizationButton"  -- Authorization¥Ü¥¿¥ó¤ò¥í¡¼¥É
-  guiCancelButton <- xmlGetWidget xml castToButton "cancelButton"  -- Cancel¥Ü¥¿¥ó¤ò¥í¡¼¥É
-  guiPinEntry <- xmlGetWidget xml castToEntry "pinEntry"  -- PINÆşÎÏÉô¤ò¥í¡¼¥É
-  guiAuthorizationURL <- xmlGetWidget xml castToEntry "authorizationURL"  -- Ç§¾ÚÍÑURLÉ½¼¨
+  guiMainWin <- xmlGetWidget xml castToWindow "mainWin"  -- ãƒ¡ã‚¤ãƒ³ã‚¦ã‚¤ãƒ³ãƒ‰ã‚¦ã‚’ãƒ­ãƒ¼ãƒ‰
+  guiInformation <- xmlGetWidget xml castToLabel "information"  -- æƒ…å ±
+  guiTweetEntry <- xmlGetWidget xml castToEntry "tweetEntry"  -- ãƒ„ã‚¤ãƒ¼ãƒˆå…¥åŠ›éƒ¨ã‚’ãƒ­ãƒ¼ãƒ‰
+  guiTweetButton <- xmlGetWidget xml castToButton "tweetButton"  -- ãƒ„ã‚¤ãƒ¼ãƒˆãƒœã‚¿ãƒ³ã‚’ãƒ­ãƒ¼ãƒ‰
+  guiTimeline <- xmlGetWidget xml castToTextView "timeline"  -- ã‚¿ã‚¤ãƒ ãƒ©ã‚¤ãƒ³è¡¨ç¤ºéƒ¨ã‚’ãƒ­ãƒ¼ãƒ‰
+  guiTimelineWindow <- xmlGetWidget xml castToScrolledWindow "timelineWindow"  -- ã‚¹ã‚¯ãƒ­ãƒ¼ãƒ«ãƒãƒ¼ã‚’ãƒ­ãƒ¼ãƒ‰
+  guiAccessTokenWin <- xmlGetWidget xml castToWindow "accessTokenGetWin"  -- Access Tokenå–å¾—ã‚¦ã‚¤ãƒ³ãƒ‰ã‚¦ã‚’ãƒ­ãƒ¼ãƒ‰
+  guiHint <- xmlGetWidget xml castToLabel "hint"  -- èªè¨¼ç”¨ãƒ¡ãƒƒã‚»ãƒ¼ã‚¸ã‚’ãƒ­ãƒ¼ãƒ‰
+  guiAuthorizationButton <- xmlGetWidget xml castToButton "authorizationButton"  -- Authorizationãƒœã‚¿ãƒ³ã‚’ãƒ­ãƒ¼ãƒ‰
+  guiCancelButton <- xmlGetWidget xml castToButton "cancelButton"  -- Cancelãƒœã‚¿ãƒ³ã‚’ãƒ­ãƒ¼ãƒ‰
+  guiPinEntry <- xmlGetWidget xml castToEntry "pinEntry"  -- PINå…¥åŠ›éƒ¨ã‚’ãƒ­ãƒ¼ãƒ‰
+  guiAuthorizationURL <- xmlGetWidget xml castToEntry "authorizationURL"  -- èªè¨¼ç”¨URLè¡¨ç¤º
 
   return $ GUI guiMainWin guiInformation guiTweetEntry guiTweetButton guiTimeline guiTimelineWindow
                       guiAccessTokenWin guiHint guiAuthorizationButton guiCancelButton guiPinEntry guiAuthorizationURL
 
--- ¥¿¥¤¥à¥é¥¤¥ó¤Î¥Õ¥£¡¼¥ë¥É¤Ë¥Ç¡¼¥¿¤òÉÁ²è
+-- ã‚¿ã‚¤ãƒ ãƒ©ã‚¤ãƒ³ã®ãƒ•ã‚£ãƒ¼ãƒ«ãƒ‰ã«ãƒ‡ãƒ¼ã‚¿ã‚’æç”»
 drawTimelineData :: GUI -> [Tweet] -> IO ()
 drawTimelineData gui tweets = do
   buffer <- textViewGetBuffer (timeline gui)
   let tl = foldl (\s -> \t -> s ++ (show t) ++ "\n") "" tweets
   textBufferSetText buffer tl
 
--- ¥¿¥¤¥à¥é¥¤¥ó¤ò¹¹¿·
+-- ã‚¿ã‚¤ãƒ ãƒ©ã‚¤ãƒ³ã‚’æ›´æ–°
 updateTimeline :: GUI -> OAuth -> Curl -> IO Bool
 updateTimeline gui oauth curl = do
   flip catch getTimelineErrorHandle $ do
-    -- ¥¿¥¤¥à¥é¥¤¥ó¤«¤éºÇ¿·¤Î¥Ä¥¤¡¼¥È¤ò¼èÆÀ
+    -- ã‚¿ã‚¤ãƒ ãƒ©ã‚¤ãƒ³ã‹ã‚‰æœ€æ–°ã®ãƒ„ã‚¤ãƒ¼ãƒˆã‚’å–å¾—
     tweets <- getTimelineData oauth curl "home_timeline"
-    -- ¥¿¥¤¥à¥é¥¤¥ó¤Î¥Ç¡¼¥¿¤òÉÁ²è
+    -- ã‚¿ã‚¤ãƒ ãƒ©ã‚¤ãƒ³ã®ãƒ‡ãƒ¼ã‚¿ã‚’æç”»
     drawTimelineData gui tweets
   return True
-      where -- ¥¨¥é¡¼¥Ï¥ó¥É¥é¡ÊÃ±¤ËÌµ»ë¡Ë
+      where -- ã‚¨ãƒ©ãƒ¼ãƒãƒ³ãƒ‰ãƒ©ï¼ˆå˜ã«ç„¡è¦–ï¼‰
         getTimelineErrorHandle = \(e::SomeException) -> return ()
 
--- tweet¤¹¤ë
+-- tweetã™ã‚‹
 tweet :: GUI -> OAuth -> Curl -> Curl -> IO ()
 tweet gui oauth curlTweet curlTimeline = do
-  -- tweet¥Ü¥¿¥ó¤òÌµ¸ú²½
+  -- tweetãƒœã‚¿ãƒ³ã‚’ç„¡åŠ¹åŒ–
   widgetSetSensitivity (tweetButton gui) False
-  -- tweet entry¤«¤étweetÆâÍÆ¤ò¼è¤ê½Ğ¤¹
+  -- tweet entryã‹ã‚‰tweetå†…å®¹ã‚’å–ã‚Šå‡ºã™
   tweetText <- entryGetText (tweetEntry gui)
 
   flip catch tweetErrorHandle $ do
-    -- tweetÁ÷¿®
+    -- tweeté€ä¿¡
     sendTweet oauth curlTweet tweetText
-    -- tweetÆşÎÏÉô¤ò¥ê¥»¥Ã¥È
+    -- tweetå…¥åŠ›éƒ¨ã‚’ãƒªã‚»ãƒƒãƒˆ
     entrySetText (tweetEntry gui) ""
-    -- ¾ğÊó¥é¥Ù¥ë½é´ü²½
+    -- æƒ…å ±ãƒ©ãƒ™ãƒ«åˆæœŸåŒ–
     initInformation gui oauth
 
-  -- timeline¤ò¹¹¿·
+  -- timelineã‚’æ›´æ–°
   updateTimeline gui oauth curlTimeline
-  -- tweet¥Ü¥¿¥ó¤òÍ­¸ú²½
+  -- tweetãƒœã‚¿ãƒ³ã‚’æœ‰åŠ¹åŒ–
   widgetSetSensitivity (tweetButton gui) True
       where
-        -- ¥¨¥é¡¼¥Ï¥ó¥É¥é
+        -- ã‚¨ãƒ©ãƒ¼ãƒãƒ³ãƒ‰ãƒ©
         tweetErrorHandle (TweetError err) = labelSetText (information gui) $ "Error: " ++ errMessage err
         errMessage EmptyTweet = "Please input some messages."
         errMessage CharactorExceeded = "You cannot transmit a tweet exceeding 140 characters."
         errMessage APIError = "API problem, please try again."
 
--- ¥á¥¤¥ó¥¦¥¤¥ó¥É¥¦É½¼¨¡¦¥¿¥¤¥à¥é¥¤¥óÉ½¼¨¡¦¹¹¿·¥¿¥¤¥ŞºîÆ°¡¦¥Ä¥¤¡¼¥È¥Ü¥¿¥ó¤Ë¥Ï¥ó¥É¥é¤òÀßÄê¡Ê¡¦Ç§¾ÚÍÑ¥¦¥¤¥ó¥É¥¦¾Ãµî¡Ë
+-- ãƒ¡ã‚¤ãƒ³ã‚¦ã‚¤ãƒ³ãƒ‰ã‚¦è¡¨ç¤ºãƒ»ã‚¿ã‚¤ãƒ ãƒ©ã‚¤ãƒ³è¡¨ç¤ºãƒ»æ›´æ–°ã‚¿ã‚¤ãƒä½œå‹•ãƒ»ãƒ„ã‚¤ãƒ¼ãƒˆãƒœã‚¿ãƒ³ã«ãƒãƒ³ãƒ‰ãƒ©ã‚’è¨­å®šï¼ˆãƒ»èªè¨¼ç”¨ã‚¦ã‚¤ãƒ³ãƒ‰ã‚¦æ¶ˆå»ï¼‰
 mainRoutine :: GUI -> OAuth -> IO ()
 mainRoutine gui oauth = do
-  -- ¾ğÊó¥é¥Ù¥ë½é´ü²½
+  -- æƒ…å ±ãƒ©ãƒ™ãƒ«åˆæœŸåŒ–
   initInformation gui oauth
-  -- ¥á¥¤¥ó¥¦¥¤¥ó¥É¥¦É½¼¨
+  -- ãƒ¡ã‚¤ãƒ³ã‚¦ã‚¤ãƒ³ãƒ‰ã‚¦è¡¨ç¤º
   widgetShowAll (mainWin gui)
-  -- ¥¿¥¤¥à¥é¥¤¥ó¹¹¿·
+  -- ã‚¿ã‚¤ãƒ ãƒ©ã‚¤ãƒ³æ›´æ–°
   curlTimeline <- initialize
   updateTimeline gui oauth curlTimeline
-  -- ¥¿¥¤¥à¥é¥¤¥ó¤ò°ìÄê¤Î¥¤¥ó¥¿¡¼¥Ğ¥ë¤´¤È¤Ë¹¹¿·
+  -- ã‚¿ã‚¤ãƒ ãƒ©ã‚¤ãƒ³ã‚’ä¸€å®šã®ã‚¤ãƒ³ã‚¿ãƒ¼ãƒãƒ«ã”ã¨ã«æ›´æ–°
   timeoutAdd (updateTimeline gui oauth curlTimeline) 30000
-  -- "tweet"¥Ü¥¿¥ó¤Ç¥Ä¥¤¡¼¥È
+  -- "tweet"ãƒœã‚¿ãƒ³ã§ãƒ„ã‚¤ãƒ¼ãƒˆ
   curlTweet <- initialize
   onClicked (tweetButton gui) (tweet gui oauth curlTweet curlTimeline)
-  -- Ç§¾ÚÍÑ¥¦¥¤¥ó¥É¥¦¾Ãµî
+  -- èªè¨¼ç”¨ã‚¦ã‚¤ãƒ³ãƒ‰ã‚¦æ¶ˆå»
   widgetHideAll (accessTokenGetWin gui)
 
 main :: FilePath -> IO ()
 main gladePath = do
-  -- GTK+¥·¥¹¥Æ¥à½é´ü²½
+  -- GTK+ã‚·ã‚¹ãƒ†ãƒ åˆæœŸåŒ–
   initGUI
-  -- Â¾¤Î¥¹¥ì¥Ã¥É¤¬ÉÑÈË¤ËÁö¤ì¤ë¤è¤¦¤Ë¤¹¤ë
+  -- ä»–ã®ã‚¹ãƒ¬ãƒƒãƒ‰ãŒé »ç¹ã«èµ°ã‚Œã‚‹ã‚ˆã†ã«ã™ã‚‹
   timeoutAddFull (yield >> return True) priorityDefaultIdle 100
-  -- .glade¥Õ¥¡¥¤¥ë¤ò¥í¡¼¥É
-  gui <- loadGlade gladePath  -- ¥¦¥¤¥ó¥É¥¦¤òÉ½¼¨
-  -- x/Cansel¥Ü¥¿¥ó¤Ç¥¦¥¤¥ó¥É¥¦¤ò¾Ãµî
+  -- .gladeãƒ•ã‚¡ã‚¤ãƒ«ã‚’ãƒ­ãƒ¼ãƒ‰
+  gui <- loadGlade gladePath  -- ã‚¦ã‚¤ãƒ³ãƒ‰ã‚¦ã‚’è¡¨ç¤º
+  -- x/Canselãƒœã‚¿ãƒ³ã§ã‚¦ã‚¤ãƒ³ãƒ‰ã‚¦ã‚’æ¶ˆå»
   onDestroy (mainWin gui) mainQuit
   onDestroy (accessTokenGetWin gui) mainQuit
   onClicked (cancelButton gui) mainQuit
 
-  -- Consumer Key / Consumer SecretÆÉ¤ß¹ş¤ß
+  -- Consumer Key / Consumer Secretèª­ã¿è¾¼ã¿
   (consumerKey:consumerSecret:[]) <- runResourceT $ CB.sourceFile "./config.ini" $= CB.lines $= CL.map unpack $$ CL.take 2
   let oauth = OAuth consumerKey consumerSecret "" "" "" ""
-
-  -- Access Token¤ò¼èÆÀ¤·¡¢¥á¥¤¥ó¥¦¥¤¥ó¥É¥¦¤òÉ½¼¨
+  -- Access Tokenã‚’å–å¾—ã—ã€ãƒ¡ã‚¤ãƒ³ã‚¦ã‚¤ãƒ³ãƒ‰ã‚¦ã‚’è¡¨ç¤º
   restoreAccessToken gui oauth `catch` \(e::SomeException) -> authorization gui oauth
 
-  -- ¥á¥¤¥ó¥ë¡¼¥×
+  -- ãƒ¡ã‚¤ãƒ³ãƒ«ãƒ¼ãƒ—
   mainGUI
 
