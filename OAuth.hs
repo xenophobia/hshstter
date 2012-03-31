@@ -25,8 +25,19 @@ data OAuth = OAuth {
       accessToken :: !String,
       accessTokenSecret :: !String,
       user_id :: !String,
-      screen_name :: !String
+      screen_name :: !String,
+      curl :: !Curl
     }
+
+newOAuth :: String -> String -> String -> String -> String -> String -> IO OAuth
+newOAuth oauthConsumerKey oauthConsumerSecret oauthAccessToken oauthAccessTokenSecret oauthUser_id oauthScreen_name =
+    (OAuth oauthConsumerKey oauthConsumerSecret oauthAccessToken oauthAccessTokenSecret oauthUser_id oauthScreen_name) <$> initialize
+
+getCurl :: OAuth -> IO Curl
+getCurl oauth = do
+  let oauthCurl = curl oauth
+  reset oauthCurl
+  return oauthCurl
 
 -- パラメータ型
 type Parameter = (String, String)
@@ -50,8 +61,7 @@ getParameter parameters parameterName =
 -- パラメータを '=' で結合し、 ',' 区切りで並べる
 urlEncodeParams :: [Parameter] -> String
 urlEncodeParams parameters = intercalate ", " . map (\(x, y) -> urlEncode x ++ "=" ++ doubleQuote (urlEncode y)) $ parameters
-    where
-      doubleQuote str = "\"" ++ str ++ "\""
+    where doubleQuote str = "\"" ++ str ++ "\""
 
 -- リクエストの署名を生成
 genSignature :: String -> String -> RequestMethod -> String -> [Parameter] -> String
@@ -65,12 +75,13 @@ genSignature consumerSecret tokenSecret method uri parameters =
 -- リクエストトークン取得URL
 requestTokenURL = "https://api.twitter.com/oauth/request_token"
 -- 認証ページURL
-authorizeURL = "https://api.twitter.com/oauth/authorize"
+authorizeURL :: Parameter -> String
+authorizeURL requestToken = "https://api.twitter.com/oauth/authorize" ++ "?" ++ urlEncodeVars [requestToken]
 -- アクセストークン取得URL
 accessTokenURL = "https://api.twitter.com/oauth/access_token"
 -- APIリクエストURL
 apiRequestURL :: String -> String
-apiRequestURL api = "https://api.twitter.com/1/statuses/" ++ api ++ ".json"
+apiRequestURL api = "https://api.twitter.com" ++ api ++ ".json"
 
 -- OAuth Request 生成
 oauthRequest :: OAuth -> String -> String -> [Parameter] -> IO String
@@ -88,17 +99,17 @@ oauthRequest oauth url token parameter = do
       authorizationParameters = authorizationParameters_++[("oauth_signature", signature)] -- 署名をパラメータに加える
       authorizationHeader = ("Authorization: OAuth "++) . urlEncodeParams $ authorizationParameters -- Authorizationヘッダ生成
       contentLengthHeader = "Content-Length: 0"
-  -- Curlインスタンス初期化
+  -- Curlインスタンス初期化・オプションをセット
   curl <- initialize
-  -- Requestを送信
   setopts curl [CurlHttpHeaders [authorizationHeader, contentLengthHeader],
                 CurlPostFieldSize 0,
                 CurlPost True]
+  -- Requestを送信
   respBody <$> (do_curl_ curl url [] :: IO (CurlResponse_ [(String, String)] String))
 
 -- APIリクエスト
-apiRequest :: Curl -> OAuth -> String -> RequestMethod -> [Parameter] -> IO String
-apiRequest curl oauth api method args = do
+apiRequest :: OAuth -> String -> RequestMethod -> [Parameter] -> IO String
+apiRequest oauth api method args = do
   let url = apiRequestURL api
       accessurl = if method == POST then url else url ++ "?" ++ urlEncodeVars args  -- URI
   timestamp <- show . (\(TOD i _) -> i) <$> getClockTime -- タイムスタンプ取得
@@ -116,10 +127,13 @@ apiRequest curl oauth api method args = do
       postFields = map (\(x, y) -> urlEncode x ++ "=" ++ urlEncode y) args
       contentLength = length . urlEncodeVars $ args
       contentLengthHeader = "Content-Length: " ++ show contentLength
-      headers = if method==POST then [authorizationHeader, contentLengthHeader] else [authorizationHeader]
-  -- Requestを送信
-  setopts curl [CurlHttpHeaders headers]
+      htmlHeaders = if method==POST then [authorizationHeader, contentLengthHeader] else [authorizationHeader]
+  -- Curlオブジェクトを初期化
+  curl <- getCurl oauth
+  -- オプションをセット
+  setopts curl [CurlHttpHeaders htmlHeaders]
   when (method == POST) $ setopts curl [CurlPostFieldSize (fromIntegral contentLength),
                                         CurlPost True,
                                         CurlPostFields postFields]
+  -- Requestを送信
   respBody <$> (do_curl_ curl accessurl [] :: IO (CurlResponse_ [(String, String)] String))

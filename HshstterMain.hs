@@ -16,8 +16,6 @@ import Data.ByteString.Char8 (ByteString, pack, unpack)
 import Prelude hiding (catch)
 import Data.Typeable
 import Control.Exception
-import Network.Curl
-import Network.HTTP
 import Control.Monad
 import Control.Applicative
 import Codec.Binary.UTF8.String (decodeString, encodeString)
@@ -54,7 +52,7 @@ authorization gui oauth = do
   -- Request Token取得
   (requestToken, requestTokenSecret) <- getRequestTokenParameter oauth
   -- 認証ページのURLを表示
-  entrySetText (authorizationURL gui) (authorizeURL ++ "?" ++ urlEncodeVars [requestToken])
+  entrySetText (authorizationURL gui) (authorizeURL requestToken)
   -- 認証用ボタンをクリックで認証を試みる
   onClicked (authorizationButton gui) $ tryGetNewAccessToken gui oauth requestToken requestTokenSecret
   return ()
@@ -76,7 +74,7 @@ getNewAccessToken gui oauth requestToken requestTokenSecret = do
   -- Access Token保持ファイルaccess.iniにAccess Token及びユーザ情報をセーブ
   runResourceT $ CL.sourceList accessTokenData $= CL.map (++"\n") $= CL.map pack $$ CB.sinkFile "access.ini"
   -- Access Tokenを設定したOAuthを引数に、メインルーチンを呼ぶ
-  mainRoutine gui $ OAuth (consumerKey oauth) (consumerSecret oauth) accessToken accessTokenSecret my_user_id my_screen_name
+  mainRoutine gui =<< newOAuth (consumerKey oauth) (consumerSecret oauth) accessToken accessTokenSecret my_user_id my_screen_name
 
 -- Access Tokenを読み込む
 restoreAccessToken :: GUI -> OAuth -> IO ()
@@ -84,7 +82,7 @@ restoreAccessToken gui oauth = do
   -- Access Token読み込み
   (accessToken:accessTokenSecret:my_user_id:my_screen_name:[]) <- runResourceT $ CB.sourceFile "./access.ini" $= CB.lines $= CL.map unpack $$ CL.take 4
   -- Access Tokenを設定したOAuthを引数に、メインルーチンを呼ぶ
-  mainRoutine gui $ OAuth (consumerKey oauth) (consumerSecret oauth) accessToken accessTokenSecret my_user_id my_screen_name
+  mainRoutine gui =<< newOAuth (consumerKey oauth) (consumerSecret oauth) accessToken accessTokenSecret my_user_id my_screen_name
 
 xmlNewIO :: FilePath -> IO GladeXML
 xmlNewIO gladePath = do
@@ -123,11 +121,11 @@ drawTimelineData gui tweets = do
   textBufferSetText buffer tl
 
 -- タイムラインを更新
-updateTimeline :: GUI -> OAuth -> Curl -> IO Bool
-updateTimeline gui oauth curl = do
+updateTimeline :: GUI -> OAuth -> IO Bool
+updateTimeline gui oauth = do
   flip catch getTimelineErrorHandle $ do
     -- タイムラインから最新のツイートを取得
-    tweets <- getTimelineData oauth curl "home_timeline"
+    tweets <- getTimelineData oauth "home_timeline"
     -- タイムラインのデータを描画
     drawTimelineData gui tweets
   return True
@@ -135,8 +133,8 @@ updateTimeline gui oauth curl = do
         getTimelineErrorHandle = \(e::SomeException) -> return ()
 
 -- tweetする
-tweet :: GUI -> OAuth -> Curl -> Curl -> IO ()
-tweet gui oauth curlTweet curlTimeline = do
+tweet :: GUI -> OAuth -> IO ()
+tweet gui oauth = do
   -- tweetボタンを無効化
   widgetSetSensitivity (tweetButton gui) False
   -- tweet entryからtweet内容を取り出す
@@ -144,14 +142,14 @@ tweet gui oauth curlTweet curlTimeline = do
 
   flip catch tweetErrorHandle $ do
     -- tweet送信
-    sendTweet oauth curlTweet tweetText
+    sendTweet oauth tweetText
     -- tweet入力部をリセット
     entrySetText (tweetEntry gui) ""
     -- 情報ラベル初期化
     initInformation gui oauth
 
   -- timelineを更新
-  updateTimeline gui oauth curlTimeline
+  updateTimeline gui oauth
   -- tweetボタンを有効化
   widgetSetSensitivity (tweetButton gui) True
       where
@@ -169,13 +167,11 @@ mainRoutine gui oauth = do
   -- メインウインドウ表示
   widgetShowAll (mainWin gui)
   -- タイムライン更新
-  curlTimeline <- initialize
-  updateTimeline gui oauth curlTimeline
+  updateTimeline gui oauth
   -- タイムラインを一定のインターバルごとに更新
-  timeoutAdd (updateTimeline gui oauth curlTimeline) 30000
+  timeoutAdd (updateTimeline gui oauth) 30000
   -- "tweet"ボタンでツイート
-  curlTweet <- initialize
-  onClicked (tweetButton gui) (tweet gui oauth curlTweet curlTimeline)
+  onClicked (tweetButton gui) (tweet gui oauth)
   -- 認証用ウインドウ消去
   widgetHideAll (accessTokenGetWin gui)
 
@@ -194,11 +190,10 @@ main gladePath = do
 
   -- Consumer Key / Consumer Secret読み込み
   (consumerKey:consumerSecret:[]) <- runResourceT $ CB.sourceFile "./config.ini" $= CB.lines $= CL.map unpack $$ CL.take 2
-  let oauth = OAuth consumerKey consumerSecret "" "" "" ""
+  oauth <- newOAuth consumerKey consumerSecret "" "" "" ""
 
   -- Access Tokenを取得し、メインウインドウを表示
   restoreAccessToken gui oauth `catch` \(e::SomeException) -> authorization gui oauth
 
   -- メインループ
   mainGUI
-

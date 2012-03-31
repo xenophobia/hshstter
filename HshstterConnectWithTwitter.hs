@@ -15,7 +15,6 @@ import Data.ByteString.Char8 (ByteString, pack, unpack)
 import Prelude hiding (catch)
 import Data.Typeable
 import Control.Exception
-import Network.Curl
 import Network.HTTP
 import Control.Monad
 import Control.Applicative
@@ -37,18 +36,18 @@ getAccessTokenString oauth requestTokenSecret param = do
   mapM (fmap snd . getParameter accessTokenParameters) ["oauth_token", "oauth_token_secret", "user_id", "screen_name"]
 
 -- タイムラインのデータを取得
-getTimelineData :: OAuth -> Curl -> String -> IO [Tweet]
-getTimelineData oauth curl dataName = getTweetList =<< apiRequest curl oauth dataName GET []
+getTimelineData :: OAuth -> String -> IO [Tweet]
+getTimelineData oauth dataName = getTweetList =<< apiRequest oauth ("/1/statuses/" ++ dataName) GET []
 
 data TweetErrorType = EmptyTweet | CharactorExceeded | APIError deriving (Show, Typeable)
 data TweetError = TweetError TweetErrorType deriving (Show, Typeable)
 instance Exception TweetError
 
 -- ツイートを送信する
-sendTweet :: OAuth -> Curl -> String -> IO String
-sendTweet oauth curl tweetText = do
+sendTweet :: OAuth -> String -> IO String
+sendTweet oauth tweetText = do
   let lengthOfTweet = length tweetText
   if lengthOfTweet == 0
     then throw (TweetError EmptyTweet)
     else if lengthOfTweet > 140 then throw (TweetError CharactorExceeded)
-    else apiRequest curl oauth "update" POST [("status", encodeString tweetText)] `catch` \(_::SomeException) -> throw (TweetError APIError)
+    else apiRequest oauth "/1/statuses/update" POST [("status", encodeString tweetText)] `catch` \(_::SomeException) -> throw (TweetError APIError)
