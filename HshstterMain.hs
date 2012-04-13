@@ -7,22 +7,43 @@ module HshstterMain where
 import OAuth
 import TweetJSON
 import HshstterConnectWithTwitter
+import qualified GUILibrary as GUI
 
 import Data.List
+import Data.Maybe
 import Data.Conduit
 import qualified Data.Conduit.List as CL
 import qualified Data.Conduit.Binary as CB
 import Data.ByteString.Char8 (ByteString, pack, unpack)
 import Prelude hiding (catch)
 import Data.Typeable
+import Data.IORef
 import Control.Exception
 import Control.Monad
 import Control.Applicative
 import Codec.Binary.UTF8.String (decodeString, encodeString)
 
+import System.Random
+
 import Graphics.UI.Gtk hiding (add)
+import Graphics.Rendering.Cairo
+import Graphics.UI.Gtk.Gdk.GC
 import Graphics.UI.Gtk.Glade
 import Control.Concurrent
+
+type TimelineName = String
+data TimelineBody = TimelineBody {body :: IORef String}
+
+-- Timelineのデータ型
+data Timeline = Timeline {
+      timelineName :: !TimelineName,
+      timelineWidth :: !(IORef Int),
+      timelineHeight :: !(IORef Int),
+      timelineField :: !DrawingArea,
+      timelineWindow :: !DrawWindow,
+      timelineBody :: !TimelineBody,
+      position :: !GUI.Coordinate
+}
 
 -- GUIデータ型
 data GUI = GUI {
@@ -30,8 +51,8 @@ data GUI = GUI {
       information :: !Label,
       tweetEntry :: !Entry,
       tweetButton :: !Button,
-      timeline :: !TextView,
-      timelineWindow :: !ScrolledWindow,
+      timelineWin :: !ScrolledWindow,
+      timeline :: !(IORef [Timeline]),
       accessTokenGetWin :: !Window,
       hint :: !Label,
       authorizationButton :: !Button,
@@ -101,8 +122,11 @@ loadGlade gladePath = do
   guiInformation <- xmlGetWidget xml castToLabel "information"  -- 情報
   guiTweetEntry <- xmlGetWidget xml castToEntry "tweetEntry"  -- ツイート入力部をロード
   guiTweetButton <- xmlGetWidget xml castToButton "tweetButton"  -- ツイートボタンをロード
-  guiTimeline <- xmlGetWidget xml castToTextView "timeline"  -- タイムライン表示部をロード
-  guiTimelineWindow <- xmlGetWidget xml castToScrolledWindow "timelineWindow"  -- スクロールバーをロード
+
+  -- タイムライン表示部をロード
+  guiTimelineWin <- xmlGetWidget xml castToScrolledWindow "timelineWindow"
+  guiTimeline <- newIORef []
+
   guiAccessTokenWin <- xmlGetWidget xml castToWindow "accessTokenGetWin"  -- Access Token取得ウインドウをロード
   guiHint <- xmlGetWidget xml castToLabel "hint"  -- 認証用メッセージをロード
   guiAuthorizationButton <- xmlGetWidget xml castToButton "authorizationButton"  -- Authorizationボタンをロード
@@ -110,26 +134,56 @@ loadGlade gladePath = do
   guiPinEntry <- xmlGetWidget xml castToEntry "pinEntry"  -- PIN入力部をロード
   guiAuthorizationURL <- xmlGetWidget xml castToEntry "authorizationURL"  -- 認証用URL表示
 
-  return $ GUI guiMainWin guiInformation guiTweetEntry guiTweetButton guiTimeline guiTimelineWindow
+  return $ GUI guiMainWin guiInformation guiTweetEntry guiTweetButton guiTimelineWin guiTimeline
                       guiAccessTokenWin guiHint guiAuthorizationButton guiCancelButton guiPinEntry guiAuthorizationURL
 
+selectTimeline :: TimelineName -> [Timeline] -> Timeline
+selectTimeline tlName = head . filter ((==tlName) . timelineName)
+
+-- タイムラインを追加
+addTimeline :: GUI -> TimelineName -> IO ()
+addTimeline gui timelineName = do
+  let pos = (0, 0)
+  field <- drawingAreaNew -- タイムライン表示領域を作成
+  widgetModifyBg field StateNormal (Color 65535 65535 65535) -- 背景を白にセット
+  scrolledWindowAddWithViewport (timelineWin gui) field -- ウインドウに貼り付け
+  drawWin <- widgetGetDrawWindow field
+  body <- newIORef ""
+  width <- newIORef 300
+  height <- newIORef 0
+  -- 再描画イベントに追加
+  onExpose field $ \_ -> do
+    tlBody <- readIORef body
+    tlWidth <- readIORef width
+    tlHeight <- readIORef height
+    GUI.drawString field drawWin (0, 0, 0) pos tlWidth tlBody
+    widgetSetSizeRequest field tlWidth tlHeight
+    return True
+  modifyIORef (timeline gui) (Timeline timelineName width height field drawWin (TimelineBody body) pos:)
+  widgetShowAll (timelineWin gui) -- 表示を更新
+
 -- タイムラインのフィールドにデータを描画
-drawTimelineData :: GUI -> [Tweet] -> IO ()
-drawTimelineData gui tweets = do
-  buffer <- textViewGetBuffer (timeline gui)
-  let tl = foldl (\s -> \t -> s ++ (show t) ++ "\n") "" tweets
-  textBufferSetText buffer tl
+drawTimelineData :: Timeline -> OAuth -> IO ()
+drawTimelineData tl oauth = do
+  -- タイムラインから最新のツイートを取得
+  tweets <- getTimelineData oauth (timelineName tl) `catch` \(e::SomeException) -> putStrLn "error" >> return []
+  let (x, y) = position tl
+      tlText = foldl (\s -> \t -> s ++ (show t) ++ "\n") "" tweets
+  -- 描画イベントを発生させる
+  writeIORef (body . timelineBody $ tl) tlText
+  writeIORef (timelineHeight $ tl) ((*25) . length . lines $ tlText)
+  drawWindowClearAreaExpose (timelineWindow tl) x y 300 ((*25) . length . lines $ tlText)
+  return ()
 
 -- タイムラインを更新
-updateTimeline :: GUI -> OAuth -> IO Bool
-updateTimeline gui oauth = do
+updateTimeline :: GUI -> OAuth -> Timeline -> IO Bool
+updateTimeline gui oauth tl = do
   flip catch getTimelineErrorHandle $ do
-    -- タイムラインから最新のツイートを取得
-    tweets <- getTimelineData oauth "home_timeline"
     -- タイムラインのデータを描画
-    drawTimelineData gui tweets
+    drawTimelineData tl oauth
   return True
-      where -- エラーハンドラ（単に無視）
+      where
+        -- エラーハンドラ（単に無視）
         getTimelineErrorHandle = \(e::SomeException) -> return ()
 
 -- tweetする
@@ -148,8 +202,8 @@ tweet gui oauth = do
     -- 情報ラベル初期化
     initInformation gui oauth
 
-  -- timelineを更新
-  updateTimeline gui oauth
+  -- home timelineを更新
+  updateTimeline gui oauth . selectTimeline "home_timeline" =<< readIORef (timeline gui)
   -- tweetボタンを有効化
   widgetSetSensitivity (tweetButton gui) True
       where
@@ -166,10 +220,14 @@ mainRoutine gui oauth = do
   initInformation gui oauth
   -- メインウインドウ表示
   widgetShowAll (mainWin gui)
+  -- Home Timelineを追加
+  addTimeline gui "home_timeline"
+  
+  hometl <- selectTimeline "home_timeline" <$> readIORef (timeline gui)
   -- タイムライン更新
-  updateTimeline gui oauth
+  updateTimeline gui oauth hometl
   -- タイムラインを一定のインターバルごとに更新
-  timeoutAdd (updateTimeline gui oauth) 30000
+  timeoutAdd (updateTimeline gui oauth hometl) 30000
   -- "tweet"ボタンでツイート
   onClicked (tweetButton gui) (tweet gui oauth)
   -- 認証用ウインドウ消去
@@ -180,7 +238,7 @@ main gladePath = do
   -- GTK+システム初期化
   initGUI
   -- 他のスレッドが頻繁に走れるようにする
-  timeoutAddFull (yield >> return True) priorityDefaultIdle 100
+  timeoutAddFull (Control.Concurrent.yield >> return True) priorityDefaultIdle 100
   -- .gladeファイルをロード
   gui <- loadGlade gladePath  -- ウインドウを表示
   -- x/Canselボタンでウインドウを消去
