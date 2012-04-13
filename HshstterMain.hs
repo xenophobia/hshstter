@@ -1,7 +1,7 @@
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE DeriveDataTypeable #-}
-
+{-# LANGUAGE TemplateHaskell, QuasiQuotes #-}
 module HshstterMain where
 
 import OAuth
@@ -148,39 +148,29 @@ addTimeline gui timelineName = do
   widgetModifyBg field StateNormal (Color 65535 65535 65535) -- 背景を白にセット
   scrolledWindowAddWithViewport (timelineWin gui) field -- ウインドウに貼り付け
   drawWin <- widgetGetDrawWindow field
-  body <- newIORef ""
-  width <- newIORef 300
-  height <- newIORef 0
+  (body, width, height) <- (,,) <$> newIORef "" <*> newIORef 300 <*> newIORef 0
   -- 再描画イベントに追加
   onExpose field $ \_ -> do
-    tlBody <- readIORef body
-    tlWidth <- readIORef width
-    tlHeight <- readIORef height
+    (tlBody, tlWidth, tlHeight) <- (,,) <$> readIORef body <*> readIORef width <*> readIORef height
     GUI.drawString field drawWin (0, 0, 0) pos tlWidth tlBody
     widgetSetSizeRequest field tlWidth tlHeight
     return True
   modifyIORef (timeline gui) (Timeline timelineName width height field drawWin (TimelineBody body) pos:)
   widgetShowAll (timelineWin gui) -- 表示を更新
 
--- タイムラインのフィールドにデータを描画
-drawTimelineData :: Timeline -> OAuth -> IO ()
-drawTimelineData tl oauth = do
-  -- タイムラインから最新のツイートを取得
-  tweets <- getTimelineData oauth (timelineName tl) `catch` \(e::SomeException) -> putStrLn "error" >> return []
-  let (x, y) = position tl
-      tlText = foldl (\s -> \t -> s ++ (show t) ++ "\n") "" tweets
-  -- 描画イベントを発生させる
-  writeIORef (body . timelineBody $ tl) tlText
-  writeIORef (timelineHeight $ tl) ((*25) . length . lines $ tlText)
-  drawWindowClearAreaExpose (timelineWindow tl) x y 300 ((*25) . length . lines $ tlText)
-  return ()
-
 -- タイムラインを更新
 updateTimeline :: GUI -> OAuth -> Timeline -> IO Bool
 updateTimeline gui oauth tl = do
   flip catch getTimelineErrorHandle $ do
-    -- タイムラインのデータを描画
-    drawTimelineData tl oauth
+    -- タイムラインから最新のツイートを取得
+    tweets <- getTimelineData oauth (timelineName tl) `catch` \(e::SomeException) -> putStrLn "error" >> return []
+    let (x, y) = position tl
+        tlText = foldl (\s -> \t -> s ++ (show t) ++ "\n") "" tweets
+    writeIORef (body . timelineBody $ tl) tlText
+    writeIORef (timelineHeight $ tl) ((*25) . length . lines $ tlText)
+    -- 再描画
+    (width, height) <- (,) <$> readIORef (timelineWidth tl) <*> readIORef (timelineHeight tl)
+    drawWindowClearAreaExpose (timelineWindow tl) x y width height
   return True
       where
         -- エラーハンドラ（単に無視）
