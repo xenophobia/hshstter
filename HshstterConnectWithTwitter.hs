@@ -8,10 +8,6 @@ import OAuth
 import TweetJSON
 
 import Data.List
-import Data.Conduit
-import qualified Data.Conduit.List as CL
-import qualified Data.Conduit.Binary as CB
-import Data.ByteString.Char8 (ByteString, pack, unpack)
 import Prelude hiding (catch)
 import Data.Typeable
 import Control.Exception
@@ -25,7 +21,7 @@ getRequestTokenParameter :: OAuth -> IO (Parameter, Parameter)
 getRequestTokenParameter oauth = do
   -- Request Token取得
   requestTokenParameters <- parseParameter <$> oauthRequest oauth requestTokenURL "" []
-  (requestToken:requestTokenSecret:[]) <- mapM (getParameter requestTokenParameters) ["oauth_token", "oauth_token_secret"]
+  [requestToken, requestTokenSecret] <- mapM (getParameter requestTokenParameters) ["oauth_token", "oauth_token_secret"]
   return (requestToken, requestTokenSecret)
 
 -- AccessTokenをString型で取得

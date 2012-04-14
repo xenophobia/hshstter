@@ -54,13 +54,3 @@ getTweetList :: Monad m => String -> m [Tweet]
 getTweetList rsp = case decode rsp of
                      Ok (JSArray tweets) -> mapM (ofJSObject >=> getTweet) tweets
                      _ -> fail "getTimeline: JSON format error"
-
-showOfTweet :: JSValue -> String
-showOfTweet JSNull = ""
-showOfTweet (JSBool b) = show b
-showOfTweet (JSRational b r) = show b ++ ": " ++ show r
-showOfTweet (JSString str) = fromJSString str
-showOfTweet (JSArray tweets) = foldl (\s -> \(i, t) -> s ++ "[" ++ show i ++ "]\n" ++ showOfTweet t ++ "\n") "" (zip [0..] tweets)
-showOfTweet (JSObject jsobject) =
-    let jsobjectString = fromJSObject jsobject in
-    foldl (\s -> \(name, content) -> s ++ name ++ " = \n" ++ showOfTweet content ++ "\n") "" jsobjectString

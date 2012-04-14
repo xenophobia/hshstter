@@ -34,10 +34,7 @@ newOAuth oauthConsumerKey oauthConsumerSecret oauthAccessToken oauthAccessTokenS
     (OAuth oauthConsumerKey oauthConsumerSecret oauthAccessToken oauthAccessTokenSecret oauthUser_id oauthScreen_name) <$> initialize
 
 getCurl :: OAuth -> IO Curl
-getCurl oauth = do
-  let oauthCurl = curl oauth
-  reset oauthCurl
-  return oauthCurl
+getCurl OAuth{curl=oauthCurl} = reset oauthCurl >> return oauthCurl
 
 -- パラメータ型
 type Parameter = (String, String)

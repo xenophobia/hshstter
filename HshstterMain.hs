@@ -7,6 +7,7 @@ module HshstterMain where
 import OAuth
 import TweetJSON
 import HshstterConnectWithTwitter
+import THUtility
 import qualified GUILibrary as GUI
 
 import Data.List
@@ -22,9 +23,6 @@ import Control.Exception
 import Control.Monad
 import Control.Applicative
 import Codec.Binary.UTF8.String (decodeString, encodeString)
-
-import System.Random
-
 import Graphics.UI.Gtk hiding (add)
 import Graphics.Rendering.Cairo
 import Graphics.UI.Gtk.Gdk.GC
@@ -75,15 +73,10 @@ authorization gui oauth = do
   -- 認証ページのURLを表示
   entrySetText (authorizationURL gui) (authorizeURL requestToken)
   -- 認証用ボタンをクリックで認証を試みる
-  onClicked (authorizationButton gui) $ tryGetNewAccessToken gui oauth requestToken requestTokenSecret
+  onClicked (authorizationButton gui) $ flip catch handler $ getNewAccessToken gui oauth requestToken requestTokenSecret
   return ()
-      where
-        tryGetNewAccessToken gui oauth requestToken requestTokenSecret =
-            getNewAccessToken gui oauth requestToken requestTokenSecret
-                                  `catch` \(e::SomeException) -> do
-                                    -- 認証に失敗したら再試行
-                                    entrySetText (pinEntry gui) ""
-                                    labelSetText (hint gui) "Sorry, Failed to authorize your account. Please try again."
+      where -- エラーハンドラ：認証に失敗したら再試行
+        handler = \(e::SomeException) -> entrySetText (pinEntry gui) "" >> labelSetText (hint gui) "Sorry, Failed to authorize your account. Please try again."
 
 -- Access Tokenを新規に取得
 getNewAccessToken :: GUI -> OAuth -> Parameter -> Parameter -> IO ()
@@ -91,7 +84,7 @@ getNewAccessToken gui oauth requestToken requestTokenSecret = do
   -- PIN入力 -> oauth_verifierパラメータとして束縛
   verifier <- ("oauth_varifier",) <$> entryGetText (pinEntry gui)
   -- Access Token取得
-  accessTokenData@(accessToken:accessTokenSecret:my_user_id:my_screen_name:[]) <- getAccessTokenString oauth (snd requestTokenSecret) [requestToken, verifier]
+  accessTokenData@[accessToken, accessTokenSecret, my_user_id, my_screen_name] <- getAccessTokenString oauth (snd requestTokenSecret) [requestToken, verifier]
   -- Access Token保持ファイルaccess.iniにAccess Token及びユーザ情報をセーブ
   runResourceT $ CL.sourceList accessTokenData $= CL.map (++"\n") $= CL.map pack $$ CB.sinkFile "access.ini"
   -- Access Tokenを設定したOAuthを引数に、メインルーチンを呼ぶ
@@ -101,7 +94,7 @@ getNewAccessToken gui oauth requestToken requestTokenSecret = do
 restoreAccessToken :: GUI -> OAuth -> IO ()
 restoreAccessToken gui oauth = do
   -- Access Token読み込み
-  (accessToken:accessTokenSecret:my_user_id:my_screen_name:[]) <- runResourceT $ CB.sourceFile "./access.ini" $= CB.lines $= CL.map unpack $$ CL.take 4
+  [accessToken, accessTokenSecret, my_user_id, my_screen_name] <- runResourceT $ CB.sourceFile "./access.ini" $= CB.lines $= CL.map unpack $$ CL.take 4
   -- Access Tokenを設定したOAuthを引数に、メインルーチンを呼ぶ
   mainRoutine gui =<< newOAuth (consumerKey oauth) (consumerSecret oauth) accessToken accessTokenSecret my_user_id my_screen_name
 
@@ -124,10 +117,10 @@ loadGlade gladePath = do
   guiTweetButton <- xmlGetWidget xml castToButton "tweetButton"  -- ツイートボタンをロード
 
   -- タイムライン表示部をロード
-  guiTimelineWin <- xmlGetWidget xml castToScrolledWindow "timelineWindow"
+  guiTimelineWin <- xmlGetWidget xml castToScrolledWindow "timelineWin"
   guiTimeline <- newIORef []
 
-  guiAccessTokenWin <- xmlGetWidget xml castToWindow "accessTokenGetWin"  -- Access Token取得ウインドウをロード
+  guiAccessTokenGetWin <- xmlGetWidget xml castToWindow "accessTokenGetWin"  -- Access Token取得ウインドウをロード
   guiHint <- xmlGetWidget xml castToLabel "hint"  -- 認証用メッセージをロード
   guiAuthorizationButton <- xmlGetWidget xml castToButton "authorizationButton"  -- Authorizationボタンをロード
   guiCancelButton <- xmlGetWidget xml castToButton "cancelButton"  -- Cancelボタンをロード
@@ -135,7 +128,7 @@ loadGlade gladePath = do
   guiAuthorizationURL <- xmlGetWidget xml castToEntry "authorizationURL"  -- 認証用URL表示
 
   return $ GUI guiMainWin guiInformation guiTweetEntry guiTweetButton guiTimelineWin guiTimeline
-                      guiAccessTokenWin guiHint guiAuthorizationButton guiCancelButton guiPinEntry guiAuthorizationURL
+                      guiAccessTokenGetWin guiHint guiAuthorizationButton guiCancelButton guiPinEntry guiAuthorizationURL
 
 selectTimeline :: TimelineName -> [Timeline] -> Timeline
 selectTimeline tlName = head . filter ((==tlName) . timelineName)
@@ -148,10 +141,10 @@ addTimeline gui timelineName = do
   widgetModifyBg field StateNormal (Color 65535 65535 65535) -- 背景を白にセット
   scrolledWindowAddWithViewport (timelineWin gui) field -- ウインドウに貼り付け
   drawWin <- widgetGetDrawWindow field
-  (body, width, height) <- (,,) <$> newIORef "" <*> newIORef 300 <*> newIORef 0
+  (body, width, height) <- $(mapMT 3 [|newIORef|]) ("", 300, 0)
   -- 再描画イベントに追加
   onExpose field $ \_ -> do
-    (tlBody, tlWidth, tlHeight) <- (,,) <$> readIORef body <*> readIORef width <*> readIORef height
+    (tlBody, tlWidth, tlHeight) <- $(mapMT 3 [|readIORef|]) (body, width, height)
     GUI.drawString field drawWin (0, 0, 0) pos tlWidth tlBody
     widgetSetSizeRequest field tlWidth tlHeight
     return True
@@ -169,11 +162,10 @@ updateTimeline gui oauth tl = do
     writeIORef (body . timelineBody $ tl) tlText
     writeIORef (timelineHeight $ tl) ((*25) . length . lines $ tlText)
     -- 再描画
-    (width, height) <- (,) <$> readIORef (timelineWidth tl) <*> readIORef (timelineHeight tl)
+    (width, height) <- $(mapMT 2 [|readIORef|]) (timelineWidth tl, timelineHeight tl)
     drawWindowClearAreaExpose (timelineWindow tl) x y width height
   return True
-      where
-        -- エラーハンドラ（単に無視）
+      where -- エラーハンドラ（単に無視）
         getTimelineErrorHandle = \(e::SomeException) -> return ()
 
 -- tweetする
@@ -183,7 +175,6 @@ tweet gui oauth = do
   widgetSetSensitivity (tweetButton gui) False
   -- tweet entryからtweet内容を取り出す
   tweetText <- entryGetText (tweetEntry gui)
-
   flip catch tweetErrorHandle $ do
     -- tweet送信
     sendTweet oauth tweetText
@@ -191,7 +182,6 @@ tweet gui oauth = do
     entrySetText (tweetEntry gui) ""
     -- 情報ラベル初期化
     initInformation gui oauth
-
   -- home timelineを更新
   updateTimeline gui oauth . selectTimeline "home_timeline" =<< readIORef (timeline gui)
   -- tweetボタンを有効化
@@ -212,7 +202,6 @@ mainRoutine gui oauth = do
   widgetShowAll (mainWin gui)
   -- Home Timelineを追加
   addTimeline gui "home_timeline"
-  
   hometl <- selectTimeline "home_timeline" <$> readIORef (timeline gui)
   -- タイムライン更新
   updateTimeline gui oauth hometl
@@ -230,18 +219,15 @@ main gladePath = do
   -- 他のスレッドが頻繁に走れるようにする
   timeoutAddFull (Control.Concurrent.yield >> return True) priorityDefaultIdle 100
   -- .gladeファイルをロード
-  gui <- loadGlade gladePath  -- ウインドウを表示
+  gui <- loadGlade gladePath
   -- x/Canselボタンでウインドウを消去
   onDestroy (mainWin gui) mainQuit
   onDestroy (accessTokenGetWin gui) mainQuit
   onClicked (cancelButton gui) mainQuit
-
   -- Consumer Key / Consumer Secret読み込み
   (consumerKey:consumerSecret:[]) <- runResourceT $ CB.sourceFile "./config.ini" $= CB.lines $= CL.map unpack $$ CL.take 2
   oauth <- newOAuth consumerKey consumerSecret "" "" "" ""
-
   -- Access Tokenを取得し、メインウインドウを表示
   restoreAccessToken gui oauth `catch` \(e::SomeException) -> authorization gui oauth
-
-  -- メインループ
+  -- メインループ起動
   mainGUI
