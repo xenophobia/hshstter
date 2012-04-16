@@ -29,15 +29,15 @@ data OAuth = OAuth {
       curl :: !Curl
     }
 
+-- パラメータ型
+type Parameter = (String, String)
+
 newOAuth :: String -> String -> String -> String -> String -> String -> IO OAuth
 newOAuth oauthConsumerKey oauthConsumerSecret oauthAccessToken oauthAccessTokenSecret oauthUser_id oauthScreen_name =
     (OAuth oauthConsumerKey oauthConsumerSecret oauthAccessToken oauthAccessTokenSecret oauthUser_id oauthScreen_name) <$> initialize
 
 getCurl :: OAuth -> IO Curl
 getCurl OAuth{curl=oauthCurl} = reset oauthCurl >> return oauthCurl
-
--- パラメータ型
-type Parameter = (String, String)
 
 -- パラメータをパース
 parseParameter :: String -> [Parameter]

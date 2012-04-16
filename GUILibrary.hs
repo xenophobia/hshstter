@@ -2,7 +2,6 @@ module GUILibrary where
 
 import Data.Word
 import Graphics.UI.Gtk hiding (add)
-import Graphics.Rendering.Cairo
 import Graphics.UI.Gtk.Gdk.GC
 import Control.Concurrent
 

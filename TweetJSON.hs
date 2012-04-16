@@ -15,8 +15,7 @@ data Tweet = Tweet {
 
 instance Show Tweet where
     show tweet =
-        let retweet_mark = if retweeted tweet then "[Retweet]" else "" in
-        retweet_mark ++ screen_name tweet ++ "(" ++ name tweet ++ ") [tweeted at " ++ created_at tweet ++ "]\n" ++ text tweet ++ "\n"
+        screen_name tweet ++ "(" ++ name tweet ++ ") [tweeted at " ++ created_at tweet ++ "]\n" ++ text tweet ++ "\n"
 
 -- オブジェクト名指定で対応するJSONオブジェクトの値を取得
 findJSObject :: Monad m => JSObject a -> String -> m a

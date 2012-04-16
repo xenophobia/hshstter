@@ -1,6 +1,4 @@
-{-# LANGUAGE TupleSections #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE TupleSections, ScopedTypeVariables, DeriveDataTypeable #-}
 {-# LANGUAGE TemplateHaskell, QuasiQuotes #-}
 module HshstterMain where
 

@@ -1,6 +1,4 @@
-{-# LANGUAGE TupleSections #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE TupleSections, ScopedTypeVariables, DeriveDataTypeable #-}
 
 module HshstterConnectWithTwitter where
 

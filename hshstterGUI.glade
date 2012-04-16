@@ -22,7 +22,7 @@
           </packing>
         </child>
         <child>
-          <widget class="GtkHBox" id="hbox1">
+          <widget class="GtkHBox" id="hbox">
             <property name="visible">True</property>
             <child>
               <widget class="GtkEntry" id="tweetEntry">

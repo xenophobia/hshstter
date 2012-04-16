@@ -1,5 +1,6 @@
 {-# LANGUAGE TemplateHaskell, QuasiQuotes, NoMonomorphismRestriction #-}
 module THUtility where
+
 import Language.Haskell.TH
 import Control.Monad
 import Data.IORef
