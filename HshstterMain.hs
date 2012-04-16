@@ -43,6 +43,8 @@ data Timeline = Timeline {
       position :: !GUI.Coordinate
 }
 
+type TimelineSet = IORef [Timeline]
+
 -- GUIデータ型
 data GUI = GUI {
       mainWin :: !Window,
@@ -50,7 +52,6 @@ data GUI = GUI {
       tweetEntry :: !Entry,
       tweetButton :: !Button,
       timelineWin :: !ScrolledWindow,
-      timeline :: !(IORef [Timeline]),
       accessTokenGetWin :: !Window,
       hint :: !Label,
       authorizationButton :: !Button,
@@ -59,10 +60,6 @@ data GUI = GUI {
       authorizationURL :: !Entry
     }
 
--- 情報表示を初期状態(From: (screen_name))にする
-initInformation :: GUI -> OAuth -> IO ()
-initInformation gui oauth = labelSetText (information gui) ("From: " ++ (OAuth.screen_name oauth))
-
 -- Access Tokenを所持していなかった場合、OAuth認証をユーザに行なってもらう
 authorization :: GUI -> OAuth -> IO ()
 authorization gui oauth = do
@@ -70,9 +67,8 @@ authorization gui oauth = do
   widgetShowAll (accessTokenGetWin gui)
   -- Request Token取得
   (requestToken, requestTokenSecret) <- getRequestTokenParameter oauth
-  -- 認証ページのURLを表示
+  -- 認証を待機
   entrySetText (authorizationURL gui) (authorizeURL requestToken)
-  -- 認証用ボタンをクリックで認証を試みる
   onClicked (authorizationButton gui) $ flip catch handler $ getNewAccessToken gui oauth requestToken requestTokenSecret
   return ()
       where -- エラーハンドラ：認証に失敗したら再試行
@@ -98,44 +94,17 @@ restoreAccessToken gui oauth = do
   -- Access Tokenを設定したOAuthを引数に、メインルーチンを呼ぶ
   mainRoutine gui =<< newOAuth (consumerKey oauth) (consumerSecret oauth) accessToken accessTokenSecret my_user_id my_screen_name
 
-xmlNewIO :: FilePath -> IO GladeXML
-xmlNewIO gladePath = do
-  maybeXML <- xmlNew gladePath
-  case maybeXML of
-    Nothing -> fail "XML format error."
-    Just xml -> return xml
+-- .gladeファイル（XML形式）からGUIウィジェットロード・GUI型に変換
+loadGUI :: FilePath -> IO GUI
+loadGUI = $(castToGUI ''GUI) <=< xmlNewIO
+    where xmlNewIO gladePath = xmlNew gladePath >>= \maybeXML -> case maybeXML of {Just xml -> return xml; Nothing -> fail "XML format error."}
 
--- .gladeファイル（XML形式）をロード・GUI型に変換
-loadGlade :: FilePath -> IO GUI
-loadGlade gladePath = do
-  -- XMLをロード
-  xml <- xmlNewIO gladePath
-
-  guiMainWin <- xmlGetWidget xml castToWindow "mainWin"  -- メインウインドウをロード
-  guiInformation <- xmlGetWidget xml castToLabel "information"  -- 情報
-  guiTweetEntry <- xmlGetWidget xml castToEntry "tweetEntry"  -- ツイート入力部をロード
-  guiTweetButton <- xmlGetWidget xml castToButton "tweetButton"  -- ツイートボタンをロード
-
-  -- タイムライン表示部をロード
-  guiTimelineWin <- xmlGetWidget xml castToScrolledWindow "timelineWin"
-  guiTimeline <- newIORef []
-
-  guiAccessTokenGetWin <- xmlGetWidget xml castToWindow "accessTokenGetWin"  -- Access Token取得ウインドウをロード
-  guiHint <- xmlGetWidget xml castToLabel "hint"  -- 認証用メッセージをロード
-  guiAuthorizationButton <- xmlGetWidget xml castToButton "authorizationButton"  -- Authorizationボタンをロード
-  guiCancelButton <- xmlGetWidget xml castToButton "cancelButton"  -- Cancelボタンをロード
-  guiPinEntry <- xmlGetWidget xml castToEntry "pinEntry"  -- PIN入力部をロード
-  guiAuthorizationURL <- xmlGetWidget xml castToEntry "authorizationURL"  -- 認証用URL表示
-
-  return $ GUI guiMainWin guiInformation guiTweetEntry guiTweetButton guiTimelineWin guiTimeline
-                      guiAccessTokenGetWin guiHint guiAuthorizationButton guiCancelButton guiPinEntry guiAuthorizationURL
-
-selectTimeline :: TimelineName -> [Timeline] -> Timeline
-selectTimeline tlName = head . filter ((==tlName) . timelineName)
+selectTimeline :: TimelineName -> TimelineSet -> IO Timeline
+selectTimeline tlName timelineset = head . filter ((==tlName) . timelineName) <$> readIORef timelineset
 
 -- タイムラインを追加
-addTimeline :: GUI -> TimelineName -> IO ()
-addTimeline gui timelineName = do
+addTimeline :: GUI -> TimelineSet -> TimelineName -> IO ()
+addTimeline gui timelineset timelineName = do
   let pos = (0, 0)
   field <- drawingAreaNew -- タイムライン表示領域を作成
   widgetModifyBg field StateNormal (Color 65535 65535 65535) -- 背景を白にセット
@@ -148,7 +117,7 @@ addTimeline gui timelineName = do
     GUI.drawString field drawWin (0, 0, 0) pos tlWidth tlBody
     widgetSetSizeRequest field tlWidth tlHeight
     return True
-  modifyIORef (timeline gui) (Timeline timelineName width height field drawWin (TimelineBody body) pos:)
+  modifyIORef timelineset (Timeline timelineName width height field drawWin (TimelineBody body) pos:)
   widgetShowAll (timelineWin gui) -- 表示を更新
 
 -- タイムラインを更新
@@ -173,21 +142,15 @@ tweet :: GUI -> OAuth -> IO ()
 tweet gui oauth = do
   -- tweetボタンを無効化
   widgetSetSensitivity (tweetButton gui) False
-  -- tweet entryからtweet内容を取り出す
   tweetText <- entryGetText (tweetEntry gui)
   flip catch tweetErrorHandle $ do
     -- tweet送信
     sendTweet oauth tweetText
-    -- tweet入力部をリセット
     entrySetText (tweetEntry gui) ""
-    -- 情報ラベル初期化
-    initInformation gui oauth
-  -- home timelineを更新
-  updateTimeline gui oauth . selectTimeline "home_timeline" =<< readIORef (timeline gui)
+    labelSetText (information gui) ("From: " ++ (OAuth.screen_name oauth))
   -- tweetボタンを有効化
   widgetSetSensitivity (tweetButton gui) True
-      where
-        -- エラーハンドラ
+      where -- エラーハンドラ
         tweetErrorHandle (TweetError err) = labelSetText (information gui) $ "Error: " ++ errMessage err
         errMessage EmptyTweet = "Please input some messages."
         errMessage CharactorExceeded = "You cannot transmit a tweet exceeding 140 characters."
@@ -196,14 +159,13 @@ tweet gui oauth = do
 -- メインウインドウ表示・タイムライン表示・更新タイマ作動・ツイートボタンにハンドラを設定（・認証用ウインドウ消去）
 mainRoutine :: GUI -> OAuth -> IO ()
 mainRoutine gui oauth = do
-  -- 情報ラベル初期化
-  initInformation gui oauth
+  timelineset <- newIORef []
+  labelSetText (information gui) ("From: " ++ (OAuth.screen_name oauth))
   -- メインウインドウ表示
   widgetShowAll (mainWin gui)
   -- Home Timelineを追加
-  addTimeline gui "home_timeline"
-  hometl <- selectTimeline "home_timeline" <$> readIORef (timeline gui)
-  -- タイムライン更新
+  addTimeline gui timelineset "home_timeline"
+  hometl <- selectTimeline "home_timeline" timelineset
   updateTimeline gui oauth hometl
   -- タイムラインを一定のインターバルごとに更新
   timeoutAdd (updateTimeline gui oauth hometl) 30000
@@ -218,14 +180,14 @@ main gladePath = do
   initGUI
   -- 他のスレッドが頻繁に走れるようにする
   timeoutAddFull (Control.Concurrent.yield >> return True) priorityDefaultIdle 100
-  -- .gladeファイルをロード
-  gui <- loadGlade gladePath
+  -- .gladeファイルからGUIウィジェット群をロード
+  gui <- loadGUI gladePath
   -- x/Canselボタンでウインドウを消去
   onDestroy (mainWin gui) mainQuit
   onDestroy (accessTokenGetWin gui) mainQuit
   onClicked (cancelButton gui) mainQuit
   -- Consumer Key / Consumer Secret読み込み
-  (consumerKey:consumerSecret:[]) <- runResourceT $ CB.sourceFile "./config.ini" $= CB.lines $= CL.map unpack $$ CL.take 2
+  [consumerKey, consumerSecret] <- runResourceT $ CB.sourceFile "./config.ini" $= CB.lines $= CL.map unpack $$ CL.take 2
   oauth <- newOAuth consumerKey consumerSecret "" "" "" ""
   -- Access Tokenを取得し、メインウインドウを表示
   restoreAccessToken gui oauth `catch` \(e::SomeException) -> authorization gui oauth
