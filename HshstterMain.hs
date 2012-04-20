@@ -121,7 +121,7 @@ addTimeline gui timelineset timelineName = do
 
 -- タイムラインを更新
 updateTimeline :: GUI -> OAuth -> Timeline -> IO ()
-updateTimeline gui oauth tl = do
+updateTimeline gui oauth tl =
   flip catch getTimelineErrorHandle $ do
     -- タイムラインから最新のツイートを取得
     tweets <- getTimelineData oauth (timelineName tl) `catch` \(e::SomeException) -> putStrLn "error" >> return []
@@ -130,30 +130,22 @@ updateTimeline gui oauth tl = do
     writeIORef (body . timelineBody $ tl) tlText
     writeIORef (timelineHeight $ tl) ((*25) . length . lines $ tlText)
     -- 再描画
-    width <- fst <$> windowGetSize (mainWin gui)
-    height <- readIORef $ timelineHeight tl
-    drawWindowClearAreaExpose (timelineWindow tl) x y width height
-  return ()
+    widgetQueueDraw (timelineField tl)
       where -- エラーハンドラ（単に無視）
         getTimelineErrorHandle = \(e::SomeException) -> return ()
 
 -- tweetする
-tweet :: GUI -> OAuth -> IO ()
-tweet gui oauth = do
+tweet :: GUI -> OAuth -> MVar String -> IO ()
+tweet gui oauth sendText = do
   -- tweetボタンを無効化
   widgetSetSensitivity (tweetButton gui) False
   tweetText <- entryGetText (tweetEntry gui)
   -- tweet送信
-  catch (sendTweet oauth tweetText >> return ()) tweetErrorHandle
+  putMVar sendText tweetText
   entrySetText (tweetEntry gui) ""
   labelSetText (information gui) ("From: " ++ (OAuth.screen_name oauth))
   -- tweetボタンを有効化
   widgetSetSensitivity (tweetButton gui) True
-      where -- エラーハンドラ
-        tweetErrorHandle (TweetError err) = labelSetText (information gui) $ "Error: " ++ errMessage err
-        errMessage EmptyTweet = "Please input some messages."
-        errMessage CharactorExceeded = "You cannot transmit a tweet exceeding 140 characters."
-        errMessage APIError = "API problem, please try again."
 
 -- メインウインドウ表示・タイムライン表示・更新タイマ作動・ツイートボタンにハンドラを設定（・認証用ウインドウ消去）
 mainRoutine :: GUI -> OAuth -> IO ()
@@ -165,13 +157,26 @@ mainRoutine gui oauth = do
   -- Home Timelineを追加
   addTimeline gui timelineset "home_timeline"
   hometl <- selectTimeline "home_timeline" timelineset
+  -- 通信するにはこの変数のロックを取る必要がある。
+  connectionLock <- newMVar ()
   updateTimeline gui oauth hometl
   -- タイムラインを一定のインターバルごとに更新
-  timeoutAdd (updateTimeline gui oauth hometl >> return True) 30000
+  timeoutAdd (tryTakeMVar connectionLock >>= \b -> if isNothing b then return True else updateTimeline gui oauth hometl >> putMVar connectionLock () >> return True) 30000
   -- "tweet"ボタンでツイート
-  onClicked (tweetButton gui) (tweet gui oauth)
+  sendText <- newEmptyMVar
+  onClicked (tweetButton gui) (tweet gui oauth sendText)
+  forkIO $ forever $ do
+    tweetText <- takeMVar sendText
+    takeMVar connectionLock
+    (flip catch) tweetErrorHandle (sendTweet oauth tweetText >> return ())
+    putMVar connectionLock ()
   -- 認証用ウインドウ消去
   widgetHideAll (accessTokenGetWin gui)
+    where -- エラーハンドラ
+      tweetErrorHandle (TweetError err) = labelSetText (information gui) $ "Error: " ++ errMessage err
+      errMessage EmptyTweet = "Please input some messages."
+      errMessage CharactorExceeded = "You cannot transmit a tweet exceeding 140 characters."
+      errMessage APIError = "API problem, please try again."
 
 main :: FilePath -> IO ()
 main gladePath = do
