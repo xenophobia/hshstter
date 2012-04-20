@@ -161,7 +161,13 @@ mainRoutine gui oauth = do
   connectionLock <- newMVar ()
   updateTimeline gui oauth hometl
   -- タイムラインを一定のインターバルごとに更新
-  timeoutAdd (tryTakeMVar connectionLock >>= \b -> if isNothing b then return True else updateTimeline gui oauth hometl >> putMVar connectionLock () >> return True) 30000
+  forkIO $ do
+    (flip timeoutAdd) 3000 $ do
+      takeMVar connectionLock
+      updateTimeline gui oauth hometl
+      putMVar connectionLock ()
+      return True
+    return ()
   -- "tweet"ボタンでツイート
   sendText <- newEmptyMVar
   onClicked (tweetButton gui) (tweet gui oauth sendText)
