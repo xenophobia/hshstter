@@ -17,6 +17,7 @@ import Data.ByteString.Char8 (ByteString, pack, unpack)
 import Prelude hiding (catch)
 import Data.Typeable
 import Data.IORef
+import Control.Arrow
 import Control.Exception
 import Control.Monad
 import Control.Applicative
@@ -33,7 +34,6 @@ data TimelineBody = TimelineBody {body :: IORef String}
 -- Timelineのデータ型
 data Timeline = Timeline {
       timelineName :: !TimelineName,
-      timelineWidth :: !(IORef Int),
       timelineHeight :: !(IORef Int),
       timelineField :: !DrawingArea,
       timelineWindow :: !DrawWindow,
@@ -108,18 +108,19 @@ addTimeline gui timelineset timelineName = do
   widgetModifyBg field StateNormal (Color 65535 65535 65535) -- 背景を白にセット
   scrolledWindowAddWithViewport (timelineWin gui) field -- ウインドウに貼り付け
   drawWin <- widgetGetDrawWindow field
-  (body, width, height) <- $(mapMT 3 [|newIORef|]) ("", 300, 0)
+  (body, height) <- $(mapMT 2 [|newIORef|]) ("", 0)
   -- 再描画イベントに追加
   onExpose field $ \_ -> do
-    (tlBody, tlWidth, tlHeight) <- $(mapMT 3 [|readIORef|]) (body, width, height)
+    tlWidth <- fst . first (flip (-) 30) <$> windowGetSize (mainWin gui)
+    (tlBody, tlHeight) <- $(mapMT 2 [|readIORef|]) (body, height)
     GUI.drawString field drawWin (0, 0, 0) pos tlWidth tlBody
     widgetSetSizeRequest field tlWidth tlHeight
     return True
-  modifyIORef timelineset (Timeline timelineName width height field drawWin (TimelineBody body) pos:)
+  modifyIORef timelineset (Timeline timelineName height field drawWin (TimelineBody body) pos:)
   widgetShowAll (timelineWin gui) -- 表示を更新
 
 -- タイムラインを更新
-updateTimeline :: GUI -> OAuth -> Timeline -> IO Bool
+updateTimeline :: GUI -> OAuth -> Timeline -> IO ()
 updateTimeline gui oauth tl = do
   flip catch getTimelineErrorHandle $ do
     -- タイムラインから最新のツイートを取得
@@ -129,9 +130,10 @@ updateTimeline gui oauth tl = do
     writeIORef (body . timelineBody $ tl) tlText
     writeIORef (timelineHeight $ tl) ((*25) . length . lines $ tlText)
     -- 再描画
-    (width, height) <- $(mapMT 2 [|readIORef|]) (timelineWidth tl, timelineHeight tl)
+    width <- fst <$> windowGetSize (mainWin gui)
+    height <- readIORef $ timelineHeight tl
     drawWindowClearAreaExpose (timelineWindow tl) x y width height
-  return True
+  return ()
       where -- エラーハンドラ（単に無視）
         getTimelineErrorHandle = \(e::SomeException) -> return ()
 
@@ -141,11 +143,10 @@ tweet gui oauth = do
   -- tweetボタンを無効化
   widgetSetSensitivity (tweetButton gui) False
   tweetText <- entryGetText (tweetEntry gui)
-  flip catch tweetErrorHandle $ do
-    -- tweet送信
-    sendTweet oauth tweetText
-    entrySetText (tweetEntry gui) ""
-    labelSetText (information gui) ("From: " ++ (OAuth.screen_name oauth))
+  -- tweet送信
+  catch (sendTweet oauth tweetText >> return ()) tweetErrorHandle
+  entrySetText (tweetEntry gui) ""
+  labelSetText (information gui) ("From: " ++ (OAuth.screen_name oauth))
   -- tweetボタンを有効化
   widgetSetSensitivity (tweetButton gui) True
       where -- エラーハンドラ
@@ -166,7 +167,7 @@ mainRoutine gui oauth = do
   hometl <- selectTimeline "home_timeline" timelineset
   updateTimeline gui oauth hometl
   -- タイムラインを一定のインターバルごとに更新
-  timeoutAdd (updateTimeline gui oauth hometl) 30000
+  timeoutAdd (updateTimeline gui oauth hometl >> return True) 30000
   -- "tweet"ボタンでツイート
   onClicked (tweetButton gui) (tweet gui oauth)
   -- 認証用ウインドウ消去
