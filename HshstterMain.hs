@@ -162,7 +162,7 @@ mainRoutine gui oauth = do
   updateTimeline gui oauth hometl
   -- タイムラインを一定のインターバルごとに更新
   forkIO $ do
-    (flip timeoutAdd) 3000 $ do
+    (flip timeoutAdd) 30000 $ do
       takeMVar connectionLock
       updateTimeline gui oauth hometl
       putMVar connectionLock ()
