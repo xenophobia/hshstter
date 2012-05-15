@@ -6,8 +6,14 @@ import OAuth
 import TweetJSON
 
 import Data.List
+import Data.Maybe
 import Prelude hiding (catch)
 import Data.Typeable
+import System.FilePath
+import Network.HTTP
+import System.IO
+import Network.URI
+import System.Directory
 import Control.Exception
 import Network.HTTP
 import Control.Monad
@@ -30,8 +36,8 @@ getAccessTokenString oauth requestTokenSecret param = do
   mapM (fmap snd . getParameter accessTokenParameters) ["oauth_token", "oauth_token_secret", "user_id", "screen_name"]
 
 -- タイムラインのデータを取得
-getTimelineData :: OAuth -> String -> IO [Tweet]
-getTimelineData oauth dataName = getTweetList =<< apiRequest oauth ("/1/statuses/" ++ dataName) GET []
+getTimelineData :: OAuth -> [Parameter] -> String -> IO [Tweet]
+getTimelineData oauth param dataName = getTweetList =<< apiRequest oauth ("/1/statuses/" ++ dataName) GET param
 
 data TweetErrorType = EmptyTweet | CharactorExceeded | APIError deriving (Show, Typeable)
 data TweetError = TweetError TweetErrorType deriving (Show, Typeable)
@@ -45,3 +51,14 @@ sendTweet oauth tweetText = do
     then throw (TweetError EmptyTweet)
     else if lengthOfTweet > 140 then throw (TweetError CharactorExceeded)
     else apiRequest oauth "/1/statuses/update" POST [("status", encodeString tweetText)] `catch` \(_::SomeException) -> throw (TweetError APIError)
+
+-- アイコン画像をダウンロード
+downroadIcon :: String -> IO String
+downroadIcon url = do -- return "./icon/dummy.jpg"
+  let request = defaultGETRequest $ fromJust $ parseURI url
+      outFile = "./icon/" ++ takeFileName url
+  iconImage <- getResponseBody =<< simpleHTTP request
+  fin <- openBinaryFile outFile WriteMode
+  hPutStr fin iconImage
+  hClose fin
+  return outFile

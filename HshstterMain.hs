@@ -5,7 +5,7 @@ module HshstterMain where
 import OAuth
 import TweetJSON
 import HshstterConnectWithTwitter
-import THUtility
+import Utility
 import qualified GUILibrary as GUI
 
 import Data.List
@@ -27,18 +27,19 @@ import Graphics.Rendering.Cairo
 import Graphics.UI.Gtk.Gdk.GC
 import Graphics.UI.Gtk.Glade
 import Control.Concurrent
+import qualified Data.HashTable as Hash
 
+type IconTable = Hash.HashTable String String
 type TimelineName = String
-data TimelineBody = TimelineBody {body :: IORef String}
+data TimelineBody = TimelineBody {body :: IORef [Tweet]}
 
 -- Timelineのデータ型
 data Timeline = Timeline {
       timelineName :: !TimelineName,
-      timelineHeight :: !(IORef Int),
       timelineField :: !DrawingArea,
       timelineWindow :: !DrawWindow,
       timelineBody :: !TimelineBody,
-      position :: !GUI.Coordinate
+      sinceId :: !(IORef String)
 }
 
 type TimelineSet = IORef [Timeline]
@@ -60,7 +61,7 @@ data GUI = GUI {
 
 -- Access Tokenを所持していなかった場合、OAuth認証をユーザに行なってもらう
 authorization :: GUI -> OAuth -> IO ()
-authorization gui oauth = do
+authorization gui oauth = const () <$> do
   -- 認証用ウインドウ表示
   widgetShowAll (accessTokenGetWin gui)
   -- Request Token取得
@@ -68,7 +69,6 @@ authorization gui oauth = do
   -- 認証を待機
   entrySetText (authorizationURL gui) (authorizeURL requestToken)
   onClicked (authorizationButton gui) $ flip catch handler $ getNewAccessToken gui oauth requestToken requestTokenSecret
-  return ()
       where -- エラーハンドラ：認証に失敗したら再試行
         handler = \(e::SomeException) -> entrySetText (pinEntry gui) "" >> labelSetText (hint gui) "Sorry, Failed to authorize your account. Please try again."
 
@@ -97,42 +97,56 @@ loadGUI :: FilePath -> IO GUI
 loadGUI = $(castToGUI ''GUI) <=< xmlNewIO
     where xmlNewIO gladePath = xmlNew gladePath >>= \maybeXML -> case maybeXML of {Just xml -> return xml; Nothing -> fail "XML format error."}
 
-selectTimeline :: TimelineName -> TimelineSet -> IO Timeline
-selectTimeline tlName timelineset = head . filter ((==tlName) . timelineName) <$> readIORef timelineset
+selectTimeline :: TimelineSet -> TimelineName -> IO Timeline
+selectTimeline timelineset tlName = head . filter ((==tlName) . timelineName) <$> readIORef timelineset
+
+-- アイコン取得
+getIcon :: IconTable -> Tweet -> IO GUI.Icon
+getIcon iconTable twt = do
+  icon <- Hash.lookup iconTable (name twt)
+  pixbufNewFromFile =<< case icon of {Nothing -> getAndRegisterIcon; Just ic -> return ic}
+      where getAndRegisterIcon = do
+              ic <- downroadIcon (profile_image_url twt)
+              Hash.insert iconTable (name twt) ic
+              return ic
 
 -- タイムラインを追加
-addTimeline :: GUI -> TimelineSet -> TimelineName -> IO ()
-addTimeline gui timelineset timelineName = do
-  let pos = (0, 0)
+addTimeline :: GUI -> OAuth -> TimelineSet -> TimelineName -> MVar () -> IO ()
+addTimeline gui oauth timelineset timelineName connectionLock = do
+  iconTable <- Hash.new (==) Hash.hashString
   field <- drawingAreaNew -- タイムライン表示領域を作成
   widgetModifyBg field StateNormal (Color 65535 65535 65535) -- 背景を白にセット
   scrolledWindowAddWithViewport (timelineWin gui) field -- ウインドウに貼り付け
   drawWin <- widgetGetDrawWindow field
-  (body, height) <- $(mapMT 2 [|newIORef|]) ("", 0)
+  (body, sinceid) <- $(mapMT 2 [|newIORef|]) ([], "1")
   -- 再描画イベントに追加
-  onExpose field $ \_ -> do
-    tlWidth <- fst . first (flip (-) 30) <$> windowGetSize (mainWin gui)
-    (tlBody, tlHeight) <- $(mapMT 2 [|readIORef|]) (body, height)
-    GUI.drawString field drawWin (0, 0, 0) pos tlWidth tlBody
+  onExpose field $ \_ -> (const True) <$> do
+    tlWidth <- (flip (-) 30) . fst <$> windowGetSize (mainWin gui)
+    tlBody <- readIORef body
+    tlHeight <- (\ l i m -> foldM m i l) tlBody 0 $ \i twt -> do
+      icon <- getIcon iconTable twt -- アイコン画像のPixbuf取得
+      GUI.drawTweet field drawWin icon (0, 0, 0) tlWidth i twt
     widgetSetSizeRequest field tlWidth tlHeight
-    return True
-  modifyIORef timelineset (Timeline timelineName height field drawWin (TimelineBody body) pos:)
+  let tl = Timeline timelineName field drawWin (TimelineBody body) sinceid
+  -- タイムラインを一定のインターバルごとに更新
+  forkIO $ (const ()) <$> do
+    (flip timeoutAdd) 30000 $ (const True) <$> do -- タイムライン更新スレッド起動
+      takeMVar connectionLock
+      updateTimeline gui oauth tl
+      putMVar connectionLock ()
+  modifyIORef timelineset (tl:)
   widgetShowAll (timelineWin gui) -- 表示を更新
 
 -- タイムラインを更新
 updateTimeline :: GUI -> OAuth -> Timeline -> IO ()
-updateTimeline gui oauth tl =
-  flip catch getTimelineErrorHandle $ do
-    -- タイムラインから最新のツイートを取得
-    tweets <- getTimelineData oauth (timelineName tl) `catch` \(e::SomeException) -> putStrLn "error" >> return []
-    let (x, y) = position tl
-        tlText = foldl (\s -> \t -> s ++ (show t) ++ "\n") "" tweets
-    writeIORef (body . timelineBody $ tl) tlText
-    writeIORef (timelineHeight $ tl) ((*25) . length . lines $ tlText)
-    -- 再描画
-    widgetQueueDraw (timelineField tl)
-      where -- エラーハンドラ（単に無視）
-        getTimelineErrorHandle = \(e::SomeException) -> return ()
+updateTimeline gui oauth tl = do
+  -- タイムラインから最新のツイートを取得
+  sinceid <- readIORef $ sinceId tl
+  tweets <- getTimelineData oauth [("since_id", sinceid)] (timelineName tl) `catch` \(e::SomeException) -> (const []) <$> putStrLn "error"
+  unless (null tweets) $ writeIORef (sinceId tl) (tweet_id . head $ tweets)
+  modifyIORef (body . timelineBody $ tl) (tweets++)
+  -- 再描画
+  widgetQueueDraw (timelineField tl)
 
 -- tweetする
 tweet :: GUI -> OAuth -> MVar String -> IO ()
@@ -154,28 +168,24 @@ mainRoutine gui oauth = do
   labelSetText (information gui) ("From: " ++ (OAuth.screen_name oauth))
   -- メインウインドウ表示
   widgetShowAll (mainWin gui)
-  -- Home Timelineを追加
-  addTimeline gui timelineset "home_timeline"
-  hometl <- selectTimeline "home_timeline" timelineset
+
   -- 通信するにはこの変数のロックを取る必要がある。
   connectionLock <- newMVar ()
+
+  -- Home Timelineを追加
+  addTimeline gui oauth timelineset "home_timeline" connectionLock
+  hometl <- selectTimeline timelineset "home_timeline"
   updateTimeline gui oauth hometl
-  -- タイムラインを一定のインターバルごとに更新
-  forkIO $ do
-    (flip timeoutAdd) 30000 $ do
-      takeMVar connectionLock
-      updateTimeline gui oauth hometl
-      putMVar connectionLock ()
-      return True
-    return ()
+
   -- "tweet"ボタンでツイート
   sendText <- newEmptyMVar
   onClicked (tweetButton gui) (tweet gui oauth sendText)
-  forkIO $ forever $ do
+  forkIO $ forever $ do -- tweet送信スレッド起動
     tweetText <- takeMVar sendText
     takeMVar connectionLock
-    (flip catch) tweetErrorHandle (sendTweet oauth tweetText >> return ())
+    (flip catch) tweetErrorHandle (const () <$> sendTweet oauth tweetText)
     putMVar connectionLock ()
+
   -- 認証用ウインドウ消去
   widgetHideAll (accessTokenGetWin gui)
     where -- エラーハンドラ
