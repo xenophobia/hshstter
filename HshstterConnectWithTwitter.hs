@@ -54,7 +54,7 @@ sendTweet oauth tweetText = do
 
 -- アイコン画像をダウンロード
 downroadIcon :: String -> IO String
-downroadIcon url = do -- return "./icon/dummy.jpg"
+downroadIcon url = do
   let request = defaultGETRequest $ fromJust $ parseURI url
       outFile = "./icon/" ++ takeFileName url
   iconImage <- getResponseBody =<< simpleHTTP request
