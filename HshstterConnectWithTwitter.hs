@@ -52,13 +52,17 @@ sendTweet oauth tweetText = do
     else if lengthOfTweet > 140 then throw (TweetError CharactorExceeded)
     else apiRequest oauth "/1/statuses/update" POST [("status", encodeString tweetText)] `catch` \(_::SomeException) -> throw (TweetError APIError)
 
--- アイコン画像をダウンロード
-downroadIcon :: String -> IO String
-downroadIcon url = do
-  let request = defaultGETRequest $ fromJust $ parseURI url
-      outFile = "./icon/" ++ takeFileName url
-  iconImage <- getResponseBody =<< simpleHTTP request
-  fin <- openBinaryFile outFile WriteMode
-  hPutStr fin iconImage
-  hClose fin
-  return outFile
+-- アイコン画像を取得
+getIcon :: String -> IO String
+getIcon url = do
+  let outFile = "./icon/" ++ urlEncode url
+  fileExist <- doesFileExist outFile
+  if fileExist
+    then return outFile
+    else do
+      let request = defaultGETRequest $ fromJust $ parseURI url
+      iconImage <- getResponseBody =<< simpleHTTP request
+      fin <- openBinaryFile outFile WriteMode
+      hPutStr fin iconImage
+      hClose fin
+      return outFile

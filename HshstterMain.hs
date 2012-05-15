@@ -100,14 +100,14 @@ loadGUI = $(castToGUI ''GUI) <=< xmlNewIO
 selectTimeline :: TimelineSet -> TimelineName -> IO Timeline
 selectTimeline timelineset tlName = head . filter ((==tlName) . timelineName) <$> readIORef timelineset
 
--- アイコン取得
-getIcon :: IconTable -> Tweet -> IO GUI.Icon
-getIcon iconTable twt = do
-  icon <- Hash.lookup iconTable (name twt)
+-- アイコンのPixbufを取得
+getIconImage :: IconTable -> Tweet -> IO GUI.Icon
+getIconImage iconTable twt = do
+  icon <- Hash.lookup iconTable (profile_image_url twt)
   pixbufNewFromFile =<< case icon of {Nothing -> getAndRegisterIcon; Just ic -> return ic}
       where getAndRegisterIcon = do
-              ic <- downroadIcon (profile_image_url twt)
-              Hash.insert iconTable (name twt) ic
+              ic <- getIcon (profile_image_url twt)
+              Hash.insert iconTable (profile_image_url twt) ic
               return ic
 
 -- タイムラインを追加
@@ -124,7 +124,7 @@ addTimeline gui oauth timelineset timelineName connectionLock = do
     tlWidth <- (flip (-) 30) . fst <$> windowGetSize (mainWin gui)
     tlBody <- readIORef body
     tlHeight <- (\ l i m -> foldM m i l) tlBody 0 $ \i twt -> do
-      icon <- getIcon iconTable twt -- アイコン画像のPixbuf取得
+      icon <- getIconImage iconTable twt -- アイコン画像のPixbuf取得
       GUI.drawTweet field drawWin icon (0, 0, 0) tlWidth i twt
     widgetSetSizeRequest field tlWidth tlHeight
   let tl = Timeline timelineName field drawWin (TimelineBody body) sinceid
