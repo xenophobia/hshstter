@@ -36,14 +36,10 @@ drawSeparateLine drawWin (x, y) lineLength = do
 drawIcon :: DrawWindow -> Pixbuf -> Coordinate -> IO ()
 drawIcon drawWin icon (x, y) = do
   gc <- gcNew drawWin
-  drawPixbuf drawWin gc icon 0 0 (x + 6) (y + 6) 48 48 RgbDitherNone 0 0
+  drawPixbuf drawWin gc icon 0 0 (x + 6) (y + 10) 48 48 RgbDitherNone 0 0
 
-lineWordNumber :: Int
-lineWordNumber = 40 -- １行の文字数
-lineHeight :: Int
-lineHeight = 15 -- １行の表示領域の高さ
 tweetAreaHeight :: Int
-tweetAreaHeight = 60
+tweetAreaHeight = 68
 tweetAreaMargin :: Int
 tweetAreaMargin = 5
 
