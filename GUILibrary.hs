@@ -36,7 +36,7 @@ drawSeparateLine drawWin (x, y) lineLength = do
 drawIcon :: DrawWindow -> Pixbuf -> Coordinate -> IO ()
 drawIcon drawWin icon (x, y) = do
   gc <- gcNew drawWin
-  drawPixbuf drawWin gc icon 0 0 (x + 6) (y + 10) 48 48 RgbDitherNone 0 0
+  drawPixbuf drawWin gc icon 0 0 (x + 6) (y + 10) 48 48 RgbDitherNone (-1) (-1)
 
 tweetAreaHeight :: Int
 tweetAreaHeight = 68
