@@ -9,7 +9,7 @@ data Tweet = Tweet {
       tweet_id :: !String, -- ID
       name :: !String, -- ユーザ名
       screen_name :: !String, -- ユーザID
-      retweeted :: !Bool, -- リツイートされたか
+      source :: !String, -- クライアント
       created_at :: !String, -- ツイートされた時刻
       profile_image_url :: !String, -- プロフィール画像
       text :: !String -- ツイート内容
@@ -49,11 +49,11 @@ getTweet jsobject = do
   user              <- ofJSObject   =<< findJSObject jsobject "user"
   name              <- ofJSString   =<< findJSObject user     "name"
   screen_name       <- ofJSString   =<< findJSObject user     "screen_name"
-  retweeted         <- ofJSBool     =<< findJSObject jsobject "retweeted"
+  source            <- ofJSString   =<< findJSObject jsobject "source"
   created_at        <- ofJSString   =<< findJSObject jsobject "created_at"
   profile_image_url <- ofJSString   =<< findJSObject user     "profile_image_url"
   text              <- ofJSString   =<< findJSObject jsobject "text"
-  return $ Tweet tweet_id name screen_name retweeted created_at profile_image_url text
+  return $ Tweet tweet_id name screen_name source created_at profile_image_url text
 
 -- tweetのリストを取得
 getTweetList :: Monad m => String -> m [Tweet]

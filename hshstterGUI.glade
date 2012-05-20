@@ -80,15 +80,15 @@
     <property name="height_request">250</property>
     <property name="resizable">False</property>
     <child>
-      <widget class="GtkFixed" id="fixed1">
+      <widget class="GtkFixed" id="authorizationField">
         <property name="visible">True</property>
         <child>
           <widget class="GtkLabel" id="hint">
             <property name="width_request">366</property>
             <property name="height_request">34</property>
             <property name="visible">True</property>
-            <property name="label" translatable="yes">Please access this address with a browser,
-and input PIN code.</property>
+            <property name="label" translatable="yes">Please click the following link
+and access OAuth's authorization page.</property>
           </widget>
           <packing>
             <property name="x">42</property>
@@ -104,8 +104,8 @@ and input PIN code.</property>
             <property name="invisible_char">&#x25CF;</property>
           </widget>
           <packing>
-            <property name="x">26</property>
-            <property name="y">153</property>
+            <property name="x">28</property>
+            <property name="y">121</property>
           </packing>
         </child>
         <child>
@@ -118,8 +118,8 @@ and input PIN code.</property>
             <property name="receives_default">True</property>
           </widget>
           <packing>
-            <property name="x">113</property>
-            <property name="y">198</property>
+            <property name="x">115</property>
+            <property name="y">159</property>
           </packing>
         </child>
         <child>
@@ -132,36 +132,8 @@ and input PIN code.</property>
             <property name="receives_default">True</property>
           </widget>
           <packing>
-            <property name="x">225</property>
-            <property name="y">199</property>
-          </packing>
-        </child>
-        <child>
-          <widget class="GtkEntry" id="authorizationURL">
-            <property name="width_request">400</property>
-            <property name="height_request">30</property>
-            <property name="visible">True</property>
-            <property name="can_focus">True</property>
-            <property name="editable">False</property>
-            <property name="invisible_char">&#x25CF;</property>
-          </widget>
-          <packing>
-            <property name="x">25</property>
-            <property name="y">89</property>
-          </packing>
-        </child>
-        <child>
-          <widget class="GtkLabel" id="label1">
-            <property name="width_request">279</property>
-            <property name="height_request">20</property>
-            <property name="visible">True</property>
-            <property name="xalign">0</property>
-            <property name="yalign">1</property>
-            <property name="label" translatable="yes">Authorization URL</property>
-          </widget>
-          <packing>
-            <property name="x">27</property>
-            <property name="y">66</property>
+            <property name="x">222</property>
+            <property name="y">159</property>
           </packing>
         </child>
         <child>
@@ -171,11 +143,11 @@ and input PIN code.</property>
             <property name="visible">True</property>
             <property name="xalign">0</property>
             <property name="yalign">1</property>
-            <property name="label" translatable="yes">PIN</property>
+            <property name="label" translatable="yes">Input PIN code</property>
           </widget>
           <packing>
             <property name="x">28</property>
-            <property name="y">134</property>
+            <property name="y">98</property>
           </packing>
         </child>
       </widget>

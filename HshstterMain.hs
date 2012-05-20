@@ -56,7 +56,7 @@ data GUI = GUI {
       authorizationButton :: !Button,
       cancelButton :: !Button,
       pinEntry :: !Entry,
-      authorizationURL :: !Entry
+      authorizationField :: !Fixed
     }
 
 -- Access Tokenを所持していなかった場合、OAuth認証をユーザに行なってもらう
@@ -67,7 +67,9 @@ authorization gui oauth = const () <$> do
   -- Request Token取得
   (requestToken, requestTokenSecret) <- getRequestTokenParameter oauth
   -- 認証を待機
-  entrySetText (authorizationURL gui) (authorizeURL requestToken)
+  authorizationLink <- linkButtonNewWithLabel (authorizeURL requestToken) "Authorization Page"
+  fixedPut (authorizationField gui) authorizationLink (150, 70)
+  widgetShowAll $ authorizationField gui
   onClicked (authorizationButton gui) $ flip catch handler $ getNewAccessToken gui oauth requestToken requestTokenSecret
       where -- エラーハンドラ：認証に失敗したら再試行
         handler = \(e::SomeException) -> entrySetText (pinEntry gui) "" >> labelSetText (hint gui) "Sorry, Failed to authorize your account. Please try again."
