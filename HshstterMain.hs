@@ -111,14 +111,37 @@ getIconImage iconTable twt = do
               return ic
 
 -- タイムラインを追加
-addTimeline :: GUI -> OAuth -> TimelineSet -> TimelineName -> MVar () -> IO ()
-addTimeline gui oauth timelineset timelineName connectionLock = do
+addTimeline :: GUI -> OAuth -> TimelineSet -> MVar String -> MVar String -> TimelineName -> MVar () -> IO ()
+addTimeline gui oauth timelineset retweetTweet favoriteTweet timelineName connectionLock = do
   iconTable <- Hash.new (==) Hash.hashString
   field <- drawingAreaNew -- タイムライン表示領域を作成
   widgetModifyBg field StateNormal (Color 65535 65535 65535) -- 背景を白にセット
   scrolledWindowAddWithViewport (timelineWin gui) field -- ウインドウに貼り付け
   drawWin <- widgetGetDrawWindow field
   (body, sinceid) <- $(mapMT 2 [|newIORef|]) ([], "1")
+
+  -- イベント検知・RT/favoriteの送信メソッドをセット
+  widgetAddEvents field [ButtonPressMask]
+  field `on` buttonPressEvent $ tryEvent $ const () <$> do -- ツイートがクリックされた
+    n <- (`div` GUI.tweetAreaHeight) . floor . snd <$> eventCoordinates
+    button <- eventButton
+    tweets <- liftIO $ readIORef body
+    when (button == RightButton) $ liftIO $ do
+      let thisTweetId = tweet_id $ tweets!!n
+      dialog <- dialogNew
+      set dialog [windowTitle := "About this tweet"]
+      retweetButton <- dialogAddButton dialog "Retweet" (ResponseUser idRetweet)
+      favoriteButton <- dialogAddButton dialog "Favorite" (ResponseUser idFavorite)
+      cancel <- dialogAddButton dialog "Cancel" ResponseCancel
+      widgetShow dialog
+      responseDialog <- dialogRun dialog
+      case responseDialog of
+        ResponseUser identifer | identifer == idRetweet -> putMVar retweetTweet thisTweetId
+                               | identifer == idFavorite -> putMVar favoriteTweet thisTweetId
+        ResponseCancel -> return ()
+        ResponseDeleteEvent -> return ()
+      widgetHide dialog
+
   -- 再描画イベントに追加
   onExpose field $ \_ -> (const True) <$> do
     tlWidth <- (flip (-) 30) . fst <$> windowGetSize (mainWin gui)
@@ -136,13 +159,16 @@ addTimeline gui oauth timelineset timelineName connectionLock = do
       putMVar connectionLock ()
   modifyIORef timelineset (tl:)
   widgetShowAll (timelineWin gui) -- 表示を更新
+      where
+        idRetweet = 0
+        idFavorite = 1
 
 -- タイムラインを更新
 updateTimeline :: GUI -> OAuth -> Timeline -> IO ()
 updateTimeline gui oauth tl = do
   -- タイムラインから最新のツイートを取得
   sinceid <- readIORef $ sinceId tl
-  tweets <- getTimelineData oauth [("since_id", sinceid)] (timelineName tl) `catch` \(e::SomeException) -> (const []) <$> putStrLn "error"
+  tweets <- getTimelineData oauth [("since_id", sinceid), ("count", "200")] (timelineName tl) `catch` \(e::SomeException) -> (const []) <$> putStrLn "error"
   unless (null tweets) $ writeIORef (sinceId tl) (tweet_id . head $ tweets)
   modifyIORef (body . timelineBody $ tl) (tweets++)
   -- 再描画
@@ -173,7 +199,9 @@ mainRoutine gui oauth = do
   connectionLock <- newMVar ()
 
   -- Home Timelineを追加
-  addTimeline gui oauth timelineset "home_timeline" connectionLock
+  retweetTweet <- newEmptyMVar
+  favoriteTweet <- newEmptyMVar
+  addTimeline gui oauth timelineset retweetTweet favoriteTweet "home_timeline" connectionLock
   hometl <- selectTimeline timelineset "home_timeline"
   updateTimeline gui oauth hometl
 
@@ -183,7 +211,21 @@ mainRoutine gui oauth = do
   forkIO $ forever $ do -- tweet送信スレッド起動
     tweetText <- takeMVar sendText
     takeMVar connectionLock
-    (flip catch) tweetErrorHandle (const () <$> sendTweet oauth tweetText)
+    (flip catch) tweetErrorHandle $ sendTweet oauth tweetText
+    putMVar connectionLock ()
+
+  -- リツイート
+  forkIO $ forever $ do
+    retweetID <- takeMVar retweetTweet
+    takeMVar connectionLock
+    (flip catch) tweetErrorHandle $ retweet oauth retweetID
+    putMVar connectionLock ()
+
+  -- ふぁぼ
+  forkIO $ forever $ do
+    favoriteID <- takeMVar favoriteTweet
+    takeMVar connectionLock
+    (flip catch) tweetErrorHandle $ favorite oauth favoriteID
     putMVar connectionLock ()
 
   -- 認証用ウインドウ消去

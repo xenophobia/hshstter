@@ -45,7 +45,7 @@ tweetAreaMargin = 5
 
 drawTweet :: DrawingArea -> DrawWindow -> Pixbuf -> RGB -> Int -> Int -> Tweet -> IO Int
 drawTweet drawingArea drawWin icon (r, g, b) width height twt = do
-  drawString drawingArea drawWin (r, g, b) (tweetAreaHeight , (height + tweetAreaMargin)) width (show twt)
+  drawString drawingArea drawWin (r, g, b) (tweetAreaHeight , (height + tweetAreaMargin)) (width - tweetAreaHeight) (show twt)
   drawIcon drawWin icon (0, height)
   drawSeparateLine drawWin (0, height + tweetAreaHeight) (width + 30)
   return $ height + tweetAreaHeight

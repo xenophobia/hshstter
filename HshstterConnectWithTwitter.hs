@@ -44,13 +44,13 @@ data TweetError = TweetError TweetErrorType deriving (Show, Typeable)
 instance Exception TweetError
 
 -- ツイートを送信する
-sendTweet :: OAuth -> String -> IO String
+sendTweet :: OAuth -> String -> IO ()
 sendTweet oauth tweetText = do
   let lengthOfTweet = length tweetText
   if lengthOfTweet == 0
     then throw (TweetError EmptyTweet)
     else if lengthOfTweet > 140 then throw (TweetError CharactorExceeded)
-    else apiRequest oauth "/1/statuses/update" POST [("status", encodeString tweetText)] `catch` \(_::SomeException) -> throw (TweetError APIError)
+    else const () <$> apiRequest oauth "/1/statuses/update" POST [("status", encodeString tweetText)] `catch` \(_::SomeException) -> throw (TweetError APIError)
 
 -- アイコン画像を取得
 getIcon :: String -> IO String
@@ -66,3 +66,12 @@ getIcon url = do
       hPutStr fin iconImage
       hClose fin
       return outFile
+
+type ID = String
+-- リツイート
+retweet :: OAuth -> ID -> IO ()
+retweet oauth rt_id = const () <$> apiRequest oauth ("/1/statuses/retweet/" ++ rt_id) POST [("id", rt_id)] `catch` \(_::SomeException) -> throw (TweetError APIError)
+
+-- ふぁぼ
+favorite :: OAuth -> ID -> IO ()
+favorite oauth fav_id = const () <$> apiRequest oauth ("/1/favorites/create/" ++ fav_id) POST [("id", fav_id)] `catch` \(_::SomeException) -> throw (TweetError APIError)
