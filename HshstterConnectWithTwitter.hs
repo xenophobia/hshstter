@@ -44,13 +44,13 @@ data TweetError = TweetError TweetErrorType deriving (Show, Typeable)
 instance Exception TweetError
 
 -- ツイートを送信する
-sendTweet :: OAuth -> String -> IO ()
-sendTweet oauth tweetText = do
+sendTweet :: OAuth -> String -> [Parameter] -> IO ()
+sendTweet oauth tweetText params = do
   let lengthOfTweet = length tweetText
   if lengthOfTweet == 0
     then throw (TweetError EmptyTweet)
     else if lengthOfTweet > 140 then throw (TweetError CharactorExceeded)
-    else const () <$> apiRequest oauth "/1/statuses/update" POST [("status", encodeString tweetText)] `catch` \(_::SomeException) -> throw (TweetError APIError)
+    else const () <$> apiRequest oauth "/1/statuses/update" POST (("status", encodeString tweetText):params) `catch` \(_::SomeException) -> throw (TweetError APIError)
 
 -- アイコン画像を取得
 getIcon :: String -> IO String

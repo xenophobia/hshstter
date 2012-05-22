@@ -13,6 +13,13 @@ type RGB = (Word16, Word16, Word16)
 type Coordinate = (Int, Int)
 type Icon = Pixbuf
 
+textViewGetText ::TextViewClass self => self -> Bool -> IO String
+textViewGetText textview includeHiddenChars = do
+  tb <- textViewGetBuffer textview
+  stitr <- textBufferGetStartIter tb
+  editr <- textBufferGetEndIter tb
+  textBufferGetText tb stitr editr includeHiddenChars
+
 drawString :: DrawingArea -> DrawWindow -> RGB -> Coordinate -> Int -> String -> IO ()
 drawString drawArea drawWin (r, g, b) (x, y) width str = const () <$> do
   gc <- gcNewWithValues drawWin $ newGCValues {foreground = Color r g b}
