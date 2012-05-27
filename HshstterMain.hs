@@ -125,27 +125,23 @@ addTimeline gui oauth timelineset sendText retweetTweet favoriteTweet timelineNa
   -- イベント検知・RT/favoriteの送信メソッドをセット
   widgetAddEvents field [ButtonPressMask]
   field `on` buttonPressEvent $ tryEvent $ const () <$> do -- ツイートがクリックされた
-    n <- (`div` GUI.tweetAreaHeight) . floor . snd <$> eventCoordinates
+    n <- (`div` GUI.tweetAreaHeight) . floor . snd <$> eventCoordinates -- クリックされたツイートの番号を取得・nに束縛
     button <- eventButton
-    tweets <- liftIO $ readIORef body
-    when (button == RightButton) $ liftIO $ do
+    when (button == RightButton) $ liftIO $ do -- 右クリック時イベント
+      tweets <- liftIO $ readIORef body
       let thisTweet = tweets!!n
-          thisTweetId = tweet_id thisTweet
-          thisTweetUserId = TweetJSON.screen_name thisTweet
-      dialogWidth <- fst <$> windowGetSize (mainWin gui)
-      dialog <- dialogNew
+          (thisTweetId, thisTweetUserId) = (tweet_id &&& TweetJSON.screen_name) thisTweet
+      dialogWidth <- fst <$> windowGetSize (mainWin gui) -- ダイアログの大きさはメインウインドウと同じ
+      dialog <- dialogNew -- ダイアログ生成
       set dialog [windowTitle := "About this tweet", windowDefaultWidth := dialogWidth, windowDefaultHeight := dialogHeight]
       tweetArea <- drawingAreaNew
       widgetSetSizeRequest tweetArea dialogWidth dialogHeight
       widgetModifyBg tweetArea StateNormal (Color 65535 65535 65535) -- 背景を白にセット
-      (flip containerAdd) tweetArea =<< dialogGetUpper dialog
-      retweetButton <- dialogAddButton dialog "Retweet" (ResponseUser idRetweet)
-      favoriteButton <- dialogAddButton dialog "Favorite" (ResponseUser idFavorite)
-      replyButton <- dialogAddButton dialog "Reply" (ResponseUser idReply)
-      cancel <- dialogAddButton dialog "Cancel" ResponseCancel
+      (flip containerAdd) tweetArea =<< dialogGetUpper dialog -- ツイート表示エリアをダイアログ上部にセット
+      [retweetButton, favoriteButton, replyButton, cancelButton] <- zipWithM (dialogAddButton dialog) ["Retweet", "Favorite", "Reply", "Cancel"] [ResponseUser idRetweet, ResponseUser idFavorite, ResponseUser idReply, ResponseCancel] -- ダイアログにボタンを追加
       widgetShowAll dialog
       tweetAreaDrawWin <- widgetGetDrawWindow tweetArea
-      onExpose tweetArea $ \_ -> (const True) <$> do
+      onExpose tweetArea $ const $ const True <$> do -- クリックされたツイートを表示
         icon <- getIconImage iconTable thisTweet
         GUI.drawTweet tweetArea tweetAreaDrawWin icon (0, 0, 0) dialogWidth 0 thisTweet
       widgetShowAll dialog
@@ -158,16 +154,17 @@ addTimeline gui oauth timelineset sendText retweetTweet favoriteTweet timelineNa
         ResponseDeleteEvent -> widgetDestroy dialog
 
   -- 再描画イベントに追加
-  onExpose field $ \_ -> (const True) <$> do
+  onExpose field $ const $ const True <$> do
     tlWidth <- (flip (-) 30) . fst <$> windowGetSize (mainWin gui)
     tlBody <- readIORef body
-    tlHeight <- (\ l i m -> foldM m i l) tlBody 0 $ \i twt -> do
+    tlHeight <- (\ m -> foldM m 0 tlBody) $ \i twt -> do
       icon <- getIconImage iconTable twt -- アイコン画像のPixbuf取得
       GUI.drawTweet field drawWin icon (0, 0, 0) tlWidth i twt
     widgetSetSizeRequest field tlWidth tlHeight
+
   let tl = Timeline timelineName field drawWin (TimelineBody body) sinceid
-  -- タイムラインを一定のインターバルごとに更新
-  forkIO $ (const ()) <$> do
+
+  forkIO $ const () <$> do
     (flip timeoutAdd) 30000 $ (const True) <$> do -- タイムライン更新スレッド起動
       takeMVar connectionLock
       updateTimeline gui oauth tl
@@ -180,56 +177,58 @@ addTimeline gui oauth timelineset sendText retweetTweet favoriteTweet timelineNa
         idFavorite = 1
         idReply = 2
 
--- タイムラインを更新
+-- timeline update
 updateTimeline :: GUI -> OAuth -> Timeline -> IO ()
 updateTimeline gui oauth tl = do
   -- タイムラインから最新のツイートを取得
   sinceid <- readIORef $ sinceId tl
-  tweets <- getTimelineData oauth [("since_id", sinceid), ("count", "200")] (timelineName tl) `catch` \(e::SomeException) -> (const []) <$> putStrLn "Timeline Update Error."
-  unless (null tweets) $ writeIORef (sinceId tl) (tweet_id . head $ tweets)
-  modifyIORef (body . timelineBody $ tl) (tweets++)
-  -- 再描画
-  widgetQueueDraw (timelineField tl)
+  tweets <- getTimelineData oauth [("since_id", sinceid), ("count", "100")] (timelineName tl) `catch` \(e::SomeException) -> (const []) <$> putStrLn "Timeline Update Error."
+  unless (null tweets) $ writeIORef (sinceId tl) (tweet_id . head $ tweets) -- since_idの更新
+  modifyIORef (body . timelineBody $ tl) (take 100.(tweets++))
+  widgetQueueDraw (timelineField tl) -- 再描画(バッファ入替)
 
--- tweetする
+-- tweet
 tweet :: GUI -> OAuth -> MVar (String, [Parameter]) -> IO ()
 tweet gui oauth sendText = do
-  -- tweetボタンを無効化
-  widgetSetSensitivity (tweetButton gui) False
+  widgetSetSensitivity (tweetButton gui) False -- tweetボタンを無効化
   tweetText <- entryGetText (tweetEntry gui)
-  -- tweet送信
-  putMVar sendText (tweetText, [])
+  putMVar sendText (tweetText, []) -- tweet送信
   entrySetText (tweetEntry gui) ""
   labelSetText (information gui) ("From: " ++ (OAuth.screen_name oauth))
-  -- tweetボタンを有効化
-  widgetSetSensitivity (tweetButton gui) True
+  widgetSetSensitivity (tweetButton gui) True -- tweetボタンを有効化
 
-replyTo :: GUI -> MVar (String, [Parameter]) -> String -> ID -> IO ()
-replyTo gui sendText username replyToId = do
-  replyWindow <- dialogNew
-  set replyWindow [windowTitle := "Reply To", windowDefaultWidth := replyWindowWidth , windowDefaultHeight := replyWindowHeight]
+-- reply用ダイアログ・テキストビューを生成
+replyDialogNew :: String -> IO (Dialog, TextView)
+replyDialogNew username = do
+  replyDialog <- dialogNew
+  set replyDialog [windowTitle := "Reply To", windowDefaultWidth := replyDialogWidth , windowDefaultHeight := replyDialogHeight]
   replyToLabel <- labelNew Nothing
   labelSetMarkup replyToLabel ("<b>" ++ ("@" ++ username) ++ "</b>")
   set replyToLabel [miscXalign := 0]
-  replyEntry <- textViewNew
-  replyWindowUpper <- dialogGetUpper replyWindow
-  boxPackStart replyWindowUpper replyToLabel PackNatural 0
-  boxPackStart replyWindowUpper replyEntry PackGrow 0
-  replyButton <- dialogAddButton replyWindow "Send" (ResponseYes)
-  cancel <- dialogAddButton replyWindow "Cancel" ResponseCancel
-  widgetShowAll replyWindow
-  responseDialog <- dialogRun replyWindow
+  replyInput <- textViewNew
+  textViewSetWrapMode replyInput WrapChar
+  replyDialogUpper <- dialogGetUpper replyDialog
+  boxPackStart replyDialogUpper replyToLabel PackNatural 0
+  (\input -> boxPackStart replyDialogUpper input PackGrow 0) =<< GUI.scrolledWindowNewWithWidget replyInput
+  [replyButton, cancelButton] <- zipWithM (dialogAddButton replyDialog) ["Send", "Cancel"] [ResponseYes, ResponseCancel]
+  widgetShowAll replyDialog
+  return (replyDialog, replyInput)
+    where
+      replyDialogHeight = 300
+      replyDialogWidth = 400
+
+-- reply
+replyTo :: GUI -> MVar (String, [Parameter]) -> String -> ID -> IO ()
+replyTo gui sendText username replyToId = do
+  (replyDialog, replyInput) <- replyDialogNew username
+  responseDialog <- dialogRun replyDialog
   case responseDialog of
     ResponseYes -> do
-      replyText <- GUI.textViewGetText replyEntry True
-      -- reply送信
-      putMVar sendText ("@" ++ username ++ " " ++ replyText, [("in_reply_to_status_id", replyToId)])
+      replyText <- GUI.textViewGetText replyInput True
+      putMVar sendText ("@" ++ username ++ " " ++ replyText, [("in_reply_to_status_id", replyToId)]) -- reply送信
     ResponseCancel -> return ()
     ResponseDeleteEvent -> return ()
-  widgetDestroy replyWindow
-    where
-      replyWindowHeight = 300
-      replyWindowWidth = 400
+  widgetDestroy replyDialog
 
 -- メインウインドウ表示・タイムライン表示・更新タイマ作動・ツイートボタンにハンドラを設定（・認証用ウインドウ消去）
 mainRoutine :: GUI -> OAuth -> IO ()

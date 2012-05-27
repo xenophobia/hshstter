@@ -52,7 +52,7 @@ getTweet jsobject = do
   source            <- ofJSString   =<< findJSObject jsobject "source"
   created_at        <- ofJSString   =<< findJSObject jsobject "created_at"
   profile_image_url <- ofJSString   =<< findJSObject user     "profile_image_url"
-  text              <- ofJSString   =<< findJSObject jsobject "text"
+  text              <- ofJSString =<< findJSObject jsobject "text"
   return $ Tweet tweet_id name screen_name source created_at profile_image_url text
 
 -- tweetのリストを取得

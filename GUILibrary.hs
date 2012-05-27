@@ -56,3 +56,10 @@ drawTweet drawingArea drawWin icon (r, g, b) width height twt = do
   drawIcon drawWin icon (0, height)
   drawSeparateLine drawWin (0, height + tweetAreaHeight) (width + 30)
   return $ height + tweetAreaHeight
+
+scrolledWindowNewWithWidget :: (WidgetClass widget) => widget -> IO ScrolledWindow
+scrolledWindowNewWithWidget widget = do
+  sc <- scrolledWindowNew Nothing Nothing
+  scrolledWindowAddWithViewport sc widget
+  scrolledWindowSetPolicy sc PolicyAutomatic PolicyAutomatic
+  return sc
