@@ -75,3 +75,7 @@ retweet oauth rt_id = const () <$> apiRequest oauth ("/1/statuses/retweet/" ++ r
 -- ¤Õ¤¡¤Ü
 favorite :: OAuth -> ID -> IO ()
 favorite oauth fav_id = const () <$> apiRequest oauth ("/1/favorites/create/" ++ fav_id) POST [("id", fav_id)] `catch` \(_::SomeException) -> throw (TweetError APIError)
+
+-- ºï½ü
+destroy :: OAuth -> ID -> IO ()
+destroy oauth del_id = const () <$> apiRequest oauth ("/1/statuses/destroy/" ++ del_id) POST [("id", del_id)] `catch` \(_::SomeException) -> throw (TweetError APIError)

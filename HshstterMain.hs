@@ -113,8 +113,8 @@ getIconImage iconTable twt = do
               return ic
 
 -- タイムラインを追加
-addTimeline :: GUI -> OAuth -> TimelineSet -> MVar (String, [Parameter]) -> MVar String -> MVar String -> TimelineName -> MVar () -> IO ()
-addTimeline gui oauth timelineset sendText retweetTweet favoriteTweet timelineName connectionLock = do
+addTimeline :: GUI -> OAuth -> TimelineSet -> MVar (String, [Parameter]) -> MVar String -> MVar String -> MVar String -> TimelineName -> MVar () -> IO ()
+addTimeline gui oauth timelineset sendText retweetTweet favoriteTweet deleteTweet timelineName connectionLock = do
   iconTable <- Hash.new (==) Hash.hashString
   field <- drawingAreaNew -- タイムライン表示領域を作成
   widgetModifyBg field StateNormal (Color 65535 65535 65535) -- 背景を白にセット
@@ -138,7 +138,8 @@ addTimeline gui oauth timelineset sendText retweetTweet favoriteTweet timelineNa
       widgetSetSizeRequest tweetArea dialogWidth dialogHeight
       widgetModifyBg tweetArea StateNormal (Color 65535 65535 65535) -- 背景を白にセット
       (flip containerAdd) tweetArea =<< dialogGetUpper dialog -- ツイート表示エリアをダイアログ上部にセット
-      [retweetButton, favoriteButton, replyButton, cancelButton] <- zipWithM (dialogAddButton dialog) ["Retweet", "Favorite", "Reply", "Cancel"] [ResponseUser idRetweet, ResponseUser idFavorite, ResponseUser idReply, ResponseCancel] -- ダイアログにボタンを追加
+      when (TweetJSON.screen_name thisTweet == OAuth.screen_name oauth) $ const () <$> dialogAddButton dialog "Delete" (ResponseUser idDelete)
+      zipWithM_ (dialogAddButton dialog) ["Retweet", "Favorite", "Reply", "Cancel"] [ResponseUser idRetweet, ResponseUser idFavorite, ResponseUser idReply, ResponseCancel] -- ダイアログにボタンを追加
       widgetShowAll dialog
       tweetAreaDrawWin <- widgetGetDrawWindow tweetArea
       onExpose tweetArea $ const $ const True <$> do -- クリックされたツイートを表示
@@ -148,6 +149,7 @@ addTimeline gui oauth timelineset sendText retweetTweet favoriteTweet timelineNa
       responseDialog <- dialogRun dialog
       case responseDialog of
         ResponseUser identifer | identifer == idRetweet -> putMVar retweetTweet thisTweetId >> widgetDestroy dialog
+                               | identifer == idDelete -> putMVar deleteTweet thisTweetId >> widgetDestroy dialog
                                | identifer == idFavorite -> putMVar favoriteTweet thisTweetId >> widgetDestroy dialog
                                | identifer == idReply -> widgetDestroy dialog >> replyTo gui sendText thisTweetUserId thisTweetId
         ResponseCancel -> widgetDestroy dialog
@@ -155,7 +157,7 @@ addTimeline gui oauth timelineset sendText retweetTweet favoriteTweet timelineNa
 
   -- 再描画イベントに追加
   onExpose field $ const $ const True <$> do
-    tlWidth <- (flip (-) 30) . fst <$> windowGetSize (mainWin gui)
+    tlWidth <- (subtract 30) . fst <$> windowGetSize (mainWin gui)
     tlBody <- readIORef body
     tlHeight <- (\ m -> foldM m 0 tlBody) $ \i twt -> do
       icon <- getIconImage iconTable twt -- アイコン画像のPixbuf取得
@@ -176,6 +178,7 @@ addTimeline gui oauth timelineset sendText retweetTweet favoriteTweet timelineNa
         idRetweet = 0
         idFavorite = 1
         idReply = 2
+        idDelete = 3
 
 -- timeline update
 updateTimeline :: GUI -> OAuth -> Timeline -> IO ()
@@ -245,7 +248,8 @@ mainRoutine gui oauth = do
   sendText <- newEmptyMVar
   retweetTweet <- newEmptyMVar
   favoriteTweet <- newEmptyMVar
-  addTimeline gui oauth timelineset sendText retweetTweet favoriteTweet "home_timeline" connectionLock
+  deleteTweet <- newEmptyMVar
+  addTimeline gui oauth timelineset sendText retweetTweet favoriteTweet deleteTweet "home_timeline" connectionLock
   hometl <- selectTimeline timelineset "home_timeline"
   updateTimeline gui oauth hometl
 
@@ -269,6 +273,13 @@ mainRoutine gui oauth = do
     favoriteID <- takeMVar favoriteTweet
     takeMVar connectionLock
     (flip catch) tweetErrorHandle $ favorite oauth favoriteID
+    putMVar connectionLock ()
+
+  -- 削除
+  forkIO $ forever $ do -- 削除スレッド起動
+    deleteID <- takeMVar deleteTweet
+    takeMVar connectionLock
+    (flip catch) tweetErrorHandle $ destroy oauth deleteID
     putMVar connectionLock ()
 
   -- 認証用ウインドウ消去
